@@ -32,15 +32,19 @@
 # sets output to stdout and debug
 log_user 0
 
+set verbose 0
+
+set DELAY 100
+
+set timeout 3
+
 set MAC_PATTERN                "\[0-9A-F]{2}:\[0-9A-F]{2}:\[0-9A-F]{2}:\[0-9A-F]{2}:\[0-9A-F]{2}:\[0-9A-F]{2}"
 set WEEKDAYS                   "SMTWTFS"
 set KNOWN_SEMS_FILE            "~/.known_sems"
-set DELAY                      50
 
 set HANDLE(subscribe_measures) 19
 
-# char value handle: 0x0015 (21), uuid: 0000fee2
-set HANDLE(cmd)                24 
+set HANDLE(cmd)                24
 set HANDLE(subscribe_cmd)      25
 
 set REQ_COMMAND(sync)          3
@@ -50,9 +54,7 @@ set REQ_COMMAND(set_scheduler) 12
 set REQ_COMMAND(scheduler)     14
 
 set NOTIFY(none)               -1
-# uuid: 0000fee1 => 18
 set NOTIFY(measurement)        18
-# uuid: 0000fee3 => 24
 set NOTIFY(cmd)                24
 
 set INIT(auth)                 1
@@ -62,7 +64,12 @@ set INIT(query_standby)        8
 set INIT(query_overload)       16
 set INIT(query_schedulers)     64
 set INIT(query_runtime)        128
-set INIT(firmware_revision)    256
+set INIT(device_info)          256
+
+set NOTIFIED(none)             0
+set NOTIFIED(measurement)      1
+set NOTIFIED(scheduler)        2
+set NOTIFIED(countdown)        4
 
 array set aliases              {}
 
@@ -76,7 +83,7 @@ set sem(countdown)             -1
 set sem(subscribe_cmd)         -1
 set sem(subscribe_measures)    -1
 
-set HELP(usage) "Usage: <mac/alias> -<command1> <parameters...> -<command2>\n\
+set HELP(usage) "Usage: <mac/alias> -<command1> <parameters...> >-<command2>\n\
  \                                  <mac>: bluetooth mac address of bulb\n\
  \                                  <alias>: you can use alias instead of mac address \n\
  \                                           after you have run setup (see setup) \n\
@@ -117,7 +124,9 @@ set HELP(scheduler) "\
   -scheduler <n> <set|unset|reset>   - activate, deactivate or reset given scheduler"
 
 set HELP(countdown) "\
-  -countdown <on|off> <hh:mm|+mm>\n\
+  -countdown                         - query status of countdown\n\
+\n\
+\ -countdown <on|off> <hh:mm|+mm>\n\
 \                                     on|off    - action of countdown\n\
 \                                     hh:mm|+mm - runtime of countdown\n\
 \n\
@@ -129,22 +138,30 @@ set HELP(print) "\
 set HELP(sleep) "\
   -sleep <n>                         - pause processing for n seconds"
 
+set HELP(verbose) "\
+  -verbose                           - print information about processing"
+
 set HELP(debug) "\
-  -debug                             - print debug information and actions in gatttool"
+  -debug                             - print actions in gatttool"
 
 set HELP(help) "\
   -help \[<command>\]                  - print general help or help for specific command"
 
 
-# logs output to file with process ID
+# logs output to stdout
 proc log { l } {
 
-  global pidfile
-  if { [ log_user ] != 0 } {
+  global verbose
+
+  if { $verbose != 0 } {
+
     puts $l
+
   }
 
 }
+
+
 
 
 # prints help output
@@ -315,7 +332,16 @@ proc current_datetime {} {
 
 
 
-proc current_time {} {
+proc current_datetime_str {} {
+
+  return [ clock format [ clock seconds ] -format "%Y-%m-%d %H:%M:%S" ]
+
+}
+
+
+
+
+proc current_time_str {} {
 
   return [ clock format [ clock seconds ] -format "%H:%M" ]
 
@@ -324,7 +350,7 @@ proc current_time {} {
 
 
 
-proc minutes_in_day { time } {
+proc time_in_minutes { time } {
 
   set part [ split $time ":" ]
   scan [ lindex $part 0 ] %d hours
@@ -342,7 +368,7 @@ proc calc_time { base time } {
 
   if { [ string first ":" $time ] == -1 } {
 
-    set s [ expr ( [ minutes_in_day $base ] + $time ) * 60 ]
+    set s [ expr ( [ time_in_minutes $base ] + $time ) * 60 ]
     return [ clock format $s -format %H:%M -gmt true ]
   }
 
@@ -358,16 +384,7 @@ proc calc_time { base time } {
 
 
 
-proc current_datetime_str {} {
-
-  return [ clock format [ clock seconds ] -format "%Y-%m-%d %H:%M:%S" ]
-
-}
-
-
-
-
-proc _build_week_mask { b } {
+proc build_week_mask { b } {
 
   global WEEKDAYS
 
@@ -392,7 +409,7 @@ proc _build_week_mask { b } {
 
 
 
-proc _sameday_week_mask {} {
+proc sameday_week_mask {} {
 
   global WEEKDAYS
 
@@ -407,7 +424,7 @@ proc _sameday_week_mask {} {
 
 
 
-proc _byte_for_week_mask { week_mask } {
+proc byte_for_week_mask { week_mask } {
 
   global WEEKDAYS
 
@@ -480,7 +497,7 @@ proc print_sem {} {
   for { set i 0 } { $i < 6 } { incr i } {
     append out [ print_scheduler $i ]
   }
-
+  append out [ print_countdown ]
   puts $out
 
 }
@@ -550,13 +567,41 @@ proc print_scheduler { i } {
 
 
 
+proc print_countdown {} {
+
+  global sem
+
+  set out ""
+
+  if { [ info exists sem(countdown_action) ] != 0 } {
+    append out "\tCountdown:        on\n"
+    append out "\t  Action:         [ expr $sem(countdown_action) == 1 ? "on" : "off" ]\n"
+    append out "\t  Remaining:      $sem(countdown_runtime)\n"
+    append out "\t  ETA:            [ calc_time [ current_time_str ] [ time_in_minutes $sem(countdown_runtime) ] ]\n"
+    append out "\n"
+  }
+
+  return $out
+
+}
+
+
+
+
 proc gatt_connect { mac } {
+
+  global DELAY
+
+  log "INFO:\tTry to connect to $mac"
 
   expect "\[LE\]"
   send "connect $mac\r"
   expect "Connection successful" {
+    after $DELAY
+    log "INFO:\tConnected to $mac"
     return 1
   }
+  log "ERROR:\tConnection failed"
   return 0
 
 }
@@ -566,17 +611,20 @@ proc gatt_connect { mac } {
 
 proc gatt_disconnect {} {
 
-  global DELAY
+  global sem
+
+  log "INFO:\tDisconnect from $sem(mac)"
+
   send "disconnect\r"
-  after $DELAY
 
 }
 
 
 
 
-proc gatt_char_write_req { handle bytes notify_handle } {
+proc gatt_char_write_req { handle bytes notification_level } {
 
+  global NOTIFIED
   global DELAY
   set rv -1
 
@@ -586,17 +634,17 @@ proc gatt_char_write_req { handle bytes notify_handle } {
     append value [ decimal_to_hex $b ]
   }
 
-  log "gatt_char_write_req: char-write-req $hnd_hex $value"
+  log "INFO:\t>>>\tchar-write-req $hnd_hex $value"
 
   send "char-write-req $hnd_hex $value\r"
 
-  if { $notify_handle > 0 } {
-    return [ gatt_grab_notification_handle $notify_handle ]
+  if { $notification_level > $NOTIFIED(none) } {
+    return [ gatt_grab_notification_handle $notification_level ]
   }
 
   expect {
     "Characteristic value was written successfully" {
-      log "ok"
+      log "INFO:\tOK"
       set rv 0
     }
   }
@@ -610,29 +658,444 @@ proc gatt_char_write_req { handle bytes notify_handle } {
 
 
 
-proc gatt_grab_notification_handle { handle } {
+proc gatt_grab_notification_handle { notification_level } {
 
+  global REQ_COMMAND
+  global NOTIFY
   global DELAY
+
+  set notified 0
+
+  # loop until every type of notification is collected
+  set retry 5
+  while { [ expr $notified & $notification_level ] != $notification_level && $retry >= 0 } {
+
+    log "INFO:\tWait for notification ($retry)"
+
+    incr retry -1
+    expect {
+      -indices -re "Notification handle = 0x(.*)\r" {
+        after $DELAY
+        set buffer $expect_out(1,string)
+        log "INFO:\t<<<\tNotification handle = 0x$buffer"
+      }
+      timeout {
+        log "WARN:\tTimeout. Notification not received"
+        continue
+      }
+    }
+
+    # convert notification to byte list
+    set bytes {}
+    foreach s $buffer {
+      if { $s == "value:" } {
+        continue
+      }
+      lappend bytes [ hex_to_decimal $s ]
+    }
+    if { [ llength $bytes ] == 0 } {
+      continue
+    }
+
+    # do the right thing with this specific notification
+    set handle [ lindex $bytes 0 ]
+    set bytes [ lreplace $bytes 0 0 ]
+    if { $handle == $NOTIFY(measurement) && [ llength $bytes ] == 16 } {
+
+      # measurement
+      set notified [ expr $notified | [ parse_measurement $bytes ] ]
+
+    } elseif { $handle == $NOTIFY(cmd) && [ lindex $bytes 0 ] == $REQ_COMMAND(scheduler) && [ llength $bytes ] == 8 } {
+
+      # scheduler notification
+      set notified [ expr $notified | [ parse_scheduler $bytes ] ]
+
+    } elseif { $handle == $NOTIFY(cmd) && [ lindex $bytes 0 ] == $REQ_COMMAND(countdown) && [ llength $bytes ] == 4 } {
+
+      # countdown notification
+      set notified [ expr $notified | [ parse_countdown $bytes ] ]
+
+    }
+
+  }
+
+  return $notified
+
+}
+
+
+
+
+proc req_switch { s } {
+
+  global HANDLE
+  global NOTIFIED
+  global REQ_COMMAND
+  global sem
+
   set bytes {}
 
-  set hnd_hex [ decimal_to_hex $handle ]
+  log "INFO:\tSwitch SEM [ expr $s == 1 ? "on" : "off" ]"
 
-  expect -re "Notification handle = 0x00$hnd_hex value: " {
-    log "notification detected"
+  # Byte 1: Switch command
+  lappend bytes $REQ_COMMAND(switch)
+
+  # Byte 2: Turn on (1) / turn off (0)
+  set s [ expr $s == 1 ? 1 : 0 ]
+  lappend bytes $s
+
+  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(none) ]
+
+  if { $rv != -1 } {
+
+    log "INFO:\tSEM successfully switched"
+    set sem(power) $s
+    return 0
+
+  } else {
+
+    log "ERROR:\tSwitching SEM failed"
+    return -1
   }
-  expect "\r" {
-    log "notification data received for notification handle $handle"
+
+}
+
+
+
+
+proc req_scheduler { i } {
+
+  global HANDLE
+  global NOTIFIED
+  global REQ_COMMAND
+  global sem
+
+  set bytes {}
+  set i [ expr $i % 6 ]
+
+  log "INFO:\tRequest scheduler [ expr $i + 1 ]"
+
+  # Byte 1: Scheduler command
+  lappend bytes $REQ_COMMAND(scheduler)
+
+  # Byte 2: id of scheduler
+  lappend bytes $i
+
+  # Byte 3-4: static
+  lappend bytes 0
+  lappend bytes 5
+
+  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(scheduler) ]
+  if { [ expr $rv & $NOTIFIED(scheduler) ] == $NOTIFIED(scheduler) } {
+
+    log "INFO:\tScheduler successfully requested"
+    return 0
+
+  } else {
+
+    log "ERROR:\tReceiving scheduler state failed."
+    return -1
+
   }
 
-  after $DELAY
-  set value $expect_out(buffer)
-  log "notification: 0x00$hnd_hex $value"
+}
 
-  foreach s $value {
-    lappend bytes [ hex_to_decimal $s ]
+
+
+
+proc parse_scheduler { bytes } {
+
+  global sem
+  global REQ_COMMAND
+  global NOTIFIED
+
+  if { [ lindex $bytes 0 ] != $REQ_COMMAND(scheduler) && [ llength $bytes ] != 8 } {
+    return 0
   }
 
-  return $bytes
+  set i [ lindex $bytes 1 ]
+
+  set sem("scheduler_active_$i")       [ expr [ lindex $bytes 3 ] >> 7 ]
+  set sem("scheduler_daymask_$i")      [ build_week_mask [ lindex $bytes 3 ] ]
+  set sem("scheduler_start_$i")        [ format %2.2d [ expr [ lindex $bytes 4 ] & 127 ] ]:[ format %2.2d [ lindex $bytes 5 ] ]
+  set sem("scheduler_start_action_$i") [ expr [ lindex $bytes 4 ] >> 7 ]
+  set sem("scheduler_stop_$i")         [ format %2.2d [ expr [ lindex $bytes 6 ] & 127 ] ]:[ format %2.2d [ lindex $bytes 7 ] ]
+  set sem("scheduler_stop_action_$i")  [ expr [ lindex $bytes 6 ] >> 7 ]
+
+  log [ print_scheduler $i ]
+
+  return $NOTIFIED(scheduler)
+
+}
+
+
+
+
+proc set_scheduler { i active start start_action stop stop_action week_mask } {
+
+  global HANDLE
+  global NOTIFIED
+  global REQ_COMMAND
+  global sem
+
+  set bytes {}
+  set i [ expr $i % 6 ]
+
+  log "INFO:\tSet scheduler [ expr $i + 1 ]"
+
+  # Byte 1: Scheduler command
+  lappend bytes $REQ_COMMAND(set_scheduler)
+
+  # Byte 2: id of scheduler
+  lappend bytes $i
+
+  # Byte 3: always 0
+  lappend bytes 0
+
+  # Byte 4: Bits 1 - 7: Bits for weekdays from Sunday to Saturdays
+  #         Bit 8: Flag for active or inactive scheduler
+  lappend bytes [ expr [ byte_for_week_mask $week_mask ] | $active << 7 ]
+
+  # Byte 5: Bits 1 - 5: Starting hour
+  #         Bit 8: Flag for action (1 = turn on, 0 = turn off)
+  lappend bytes [ expr ( [ time_in_minutes $start ] / 60 ) | $start_action << 7 ]
+
+  # Byte 6: Starting minutes
+  lappend bytes [ expr ( [ time_in_minutes $start ] % 60 ) ]
+
+  # Byte 7: Ending hour
+  lappend bytes [ expr ( [ time_in_minutes $stop ] / 60 ) | $stop_action << 7 ]
+
+  # Byte 8: Ending minutes
+  lappend bytes [ expr ( [ time_in_minutes $stop ] % 60 ) ]
+
+  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(none) ]
+
+  if { $rv != -1 } {
+
+    set sem("scheduler_active_$i")       $active
+    set sem("scheduler_daymask_$i")      $week_mask
+    set sem("scheduler_start_$i")        $start
+    set sem("scheduler_start_action_$i") $start_action
+    set sem("scheduler_stop_$i")         $stop
+    set sem("scheduler_stop_action_$i")  $stop_action
+
+    log "INFO:\tScheduler successfully set"
+    log [ print_scheduler $i ]
+
+    return 0
+
+  } else {
+
+    log "ERROR:\Setting scheduler failed"
+    return -1
+
+  }
+
+}
+
+
+
+
+proc set_countdown { action runtime } {
+
+  global HANDLE
+  global NOTIFIED
+  global REQ_COMMAND
+  global sem
+
+  set bytes {}
+
+  log "INFO:\tSet countdown"
+
+  # Byte 1: Countdown command
+  lappend bytes $REQ_COMMAND(countdown)
+
+  # Byte 2: Bits 1 - 5: Runtime hour
+  #         Bit 8: Flag for action (1 = turn on, 0 = turn off)
+  lappend bytes [ expr ( [ time_in_minutes $runtime ] / 60 ) | $action << 7 ]
+
+  # Byte 3: Runtime minutes
+  lappend bytes [ expr ( [ time_in_minutes $runtime ] % 60 ) ]
+
+  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(none) ]
+
+  if { $rv != -1 } {
+    set sem(countdown)         1
+    set sem(countdown_action)  $action
+    set sem(countdown_runtime) $runtime
+
+    log "INFO:\tCountdown successfully set"
+    return 0
+
+  } else {
+
+    log "ERROR:\tSet countdown failed"
+    return -1
+
+  }
+
+}
+
+
+
+
+proc parse_countdown { bytes } {
+
+  global sem
+  global REQ_COMMAND
+  global NOTIFIED
+
+  if { [ lindex $bytes 0 ] != $REQ_COMMAND(countdown) && [ llength $bytes ] != 4 } {
+    return 0
+  }
+
+  set sem(countdown)         1
+  set sem(countdown_runtime) [ format %2.2d [ expr [ lindex $bytes 1 ] & 127 ] ]:[ format %2.2d [ lindex $bytes 2 ] ]:[ format %2.2d [ lindex $bytes 3 ] ]
+  set sem(countdown_action)  [ expr [ lindex $bytes 1 ] >> 7 ]
+
+  log [ print_countdown ]
+
+  return $NOTIFIED(countdown)
+
+}
+
+
+
+
+proc capture_measurement {} {
+
+  global NOTIFIED
+
+  set rv [ gatt_grab_notification_handle $NOTIFIED(measurement) ]
+
+  if { [ expr $rv & $NOTIFIED(measurement) ] == $NOTIFIED(measurement) } {
+
+    log "INFO:\tMeasurement successfully captured"
+    return 0
+
+  } else {
+
+    log "ERROR:\tCapturing measurement failed"
+    return -1
+
+  }
+
+}
+
+
+
+
+proc parse_measurement { bytes } {
+
+  global sem
+  global NOTIFIED
+
+  if { [ llength $bytes ] != 16 } {
+
+    return 0
+
+  }
+
+  set sem(power)     [ expr [ lindex $bytes 0 ] & 1 ]
+  set sem(countdown) [ expr ( [ lindex $bytes 0 ] & 2 ) >> 1 ]
+
+  # convert back to "hex"
+  set n {}
+  foreach b $bytes {
+    lappend n [ decimal_to_hex $b ]
+  }
+
+  # Voltage
+  set sem(latest_voltage) [ convert_measurement [ lindex $n 3 ] [ lindex $n 2 ] [ lindex $n 1 ] ]
+
+  # Ampere
+  set sem(latest_ampere) [ convert_measurement [ lindex $n 6 ] [ lindex $n 5 ] [ lindex $n 4 ] ]
+
+  # Watts
+  set sem(latest_watts) [ convert_measurement [ lindex $n 9 ] [ lindex $n 8 ] [ lindex $n 7 ] ]
+
+  # Power factor
+  set sem(latest_factor) [ convert_measurement [ lindex $n 12 ] [ lindex $n 11 ] [ lindex $n 10 ] ]
+
+  # Frequency
+  set sem(latest_frequency) [ convert_measurement [ lindex $n 15 ] [ lindex $n 14 ] [ lindex $n 13 ] ]
+
+  return $NOTIFIED(measurement)
+
+}
+
+
+
+
+proc convert_measurement {n n100 f} {
+
+  scan $n %d n
+  scan $n100 %d n100
+  scan $f %d f
+
+  set rv [ expr ( $n100 * 100 + $n ) ]
+  set rv [ expr $rv / pow(10, 4 - $f) ]
+  return $rv
+
+}
+
+
+
+
+proc capture_countdown {} {
+
+  global NOTIFIED
+  global sem
+
+  set rv [ gatt_grab_notification_handle $NOTIFIED(countdown) ]
+
+  if { [ expr $rv & $NOTIFIED(countdown) ] == $NOTIFIED(countdown) } {
+
+    log "INFO:\tCountdown successfully captured"
+    return 0
+
+  } else {
+
+    log "ERROR:\tCapturing countdown failed"
+    return -1
+
+  }
+
+}
+
+
+
+
+proc req_subscribe_notification { handle s } {
+
+  global NOTIFIED
+  global sem
+
+  set bytes {}
+
+  log "INFO:\tSubscribe for notification handle 0x[ decimal_to_hex $handle ]"
+
+  # Byte 1: Subscribe/unsubscribe command
+  set s [ expr $s == 1 ? 1 : 0 ]
+  lappend bytes $s
+
+  # Byte 2: static 0
+  lappend bytes 0
+
+  set rv [ gatt_char_write_req $handle $bytes $NOTIFIED(none) ]
+
+  if { $rv != -1 } {
+
+    log "INFO:\tSuccessfully subscripted to notification handle 0x[ decimal_to_hex $handle ]"
+    return 0
+
+  } else {
+
+    log "ERROR:\tSubscription to notification handle 0x[ decimal_to_hex $handle ] failed"
+    return -1
+
+  }
 
 }
 
@@ -642,13 +1105,15 @@ proc gatt_grab_notification_handle { handle } {
 proc req_sync {} {
 
   global HANDLE
-  global NOTIFY
+  global NOTIFIED
   global REQ_COMMAND
   global sem
 
   set datetime [ current_datetime ]
 
   set bytes {}
+
+  log "INFO:\tSync SEM"
 
   # Byte 1: Sync command
   lappend bytes $REQ_COMMAND(sync)
@@ -674,250 +1139,19 @@ proc req_sync {} {
   # Byte 9-10: Secret key
   lappend bytes [ endian $sem(secret) ]
 
-  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFY(none) ]
+  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(none) ]
 
-  if { $rv == 0 } {
+  if { $rv != -1 } {
+
+    log "INFO:\tSEM synced successfully"
     set sem(initialized) 1
-  }
 
-  return $rv
+  } else {
 
-}
-
-
-
-
-proc req_switch { s } {
-
-  global HANDLE
-  global NOTIFY
-  global REQ_COMMAND
-  global sem
-
-  set bytes {}
-
-  # Byte 1: Switch command
-  lappend bytes $REQ_COMMAND(switch)
-
-  # Byte 2: Turn on (1) / turn off (0)
-  set s [ expr $s == 1 ? 1 : 0 ]
-  lappend bytes $s
-
-  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFY(none) ]
-
-  if { $rv == 0 } {
-    set sem(power) $s
-  }
-
-  return $rv
-
-}
-
-
-
-
-proc req_subscribe_notification { handle s } {
-
-  global NOTIFY
-  global sem
-
-  set bytes {}
-
-  # Byte 1: Subscribe/unsubscribe command
-  set s [ expr $s == 1 ? 1 : 0 ]
-  lappend bytes $s
-
-  # Byte 2: static 0
-  lappend bytes 0
-
-  set rv [ gatt_char_write_req $handle $bytes $NOTIFY(none) ]
-
-  return $rv
-
-}
-
-
-
-
-proc req_scheduler { i } {
-
-  global HANDLE
-  global NOTIFY
-  global REQ_COMMAND
-  global sem
-
-  set bytes {}
-  set i [ expr $i % 6 ]
-
-  # Byte 1: Scheduler command
-  lappend bytes $REQ_COMMAND(scheduler)
-
-  # Byte 2: id of scheduler
-  lappend bytes $i
-
-  # Byte 3-4: static
-  lappend bytes 0
-  lappend bytes 5
-
-  set bytes [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFY(cmd) ]
-  if { [ llength $bytes ] != 8 || [ lindex $bytes 0 ] != $REQ_COMMAND(scheduler) || [ lindex $bytes 1 ] != $i } {
+    log "ERROR:\tSynchronization of SEM failed"
     return -1
+
   }
-
-  set sem("scheduler_active_$i")       [ expr [ lindex $bytes 3 ] >> 7 ]
-  set sem("scheduler_daymask_$i")      [ _build_week_mask [ lindex $bytes 3 ] ]
-  set sem("scheduler_start_$i")        [ format %2.2d [ expr [ lindex $bytes 4 ] & 127 ] ]:[ format %2.2d [ lindex $bytes 5 ] ]
-  set sem("scheduler_start_action_$i") [ expr [ lindex $bytes 4 ] >> 7 ]
-  set sem("scheduler_stop_$i")         [ format %2.2d [ expr [ lindex $bytes 6 ] & 127 ] ]:[ format %2.2d [ lindex $bytes 7 ] ]
-  set sem("scheduler_stop_action_$i")  [ expr [ lindex $bytes 6 ] >> 7 ]
-
-  return 0
-
-}
-
-
-
-
-proc set_scheduler { i active start start_action stop stop_action week_mask } {
-
-  global HANDLE
-  global NOTIFY
-  global REQ_COMMAND
-  global sem
-
-  set bytes {}
-  set i [ expr $i % 6 ]
-
-  # Byte 1: Scheduler command
-  lappend bytes $REQ_COMMAND(set_scheduler)
-
-  # Byte 2: id of scheduler
-  lappend bytes $i
-
-  # Byte 3: always 0
-  lappend bytes 0
-
-  # Byte 4: Bits 1 - 7: Bits for weekdays from Sunday to Saturdays
-  #         Bit 8: Flag for active or inactive scheduler
-  lappend bytes [ expr [ _byte_for_week_mask $week_mask ] | $active << 7 ]
-
-  # Byte 5: Bits 1 - 5: Starting hour
-  #         Bit 8: Flag for action (1 = turn on, 0 = turn off)
-  lappend bytes [ expr ( [ minutes_in_day $start ] / 60 ) | $start_action << 7 ]
-
-  # Byte 6: Starting minutes
-  lappend bytes [ expr ( [ minutes_in_day $start ] % 60 ) ]
-
-  # Byte 7: Ending hour
-  lappend bytes [ expr ( [ minutes_in_day $stop ] / 60 ) | $stop_action << 7 ]
-
-  # Byte 8: Ending minutes
-  lappend bytes [ expr ( [ minutes_in_day $stop ] % 60 ) ]
-
-  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFY(none) ]
-
-  if { $rv == 0 } {
-    set sem("scheduler_active_$i")       $active
-    set sem("scheduler_daymask_$i")      $week_mask
-    set sem("scheduler_start_$i")        $start
-    set sem("scheduler_start_action_$i") $start_action
-    set sem("scheduler_stop_$i")         $stop
-    set sem("scheduler_stop_action_$i")  $stop_action
-  }
-
-  return $rv
-
-}
-
-
-
-
-proc set_countdown { action runtime } {
-
-  global HANDLE
-  global NOTIFY
-  global REQ_COMMAND
-  global sem
-
-  set bytes {}
-
-  # Byte 1: Countdown command
-  lappend bytes $REQ_COMMAND(countdown)
-
-  # Byte 2: Bits 1 - 5: Runtime hour
-  #         Bit 8: Flag for action (1 = turn on, 0 = turn off)
-  lappend bytes [ expr ( [ minutes_in_day $runtime ] / 60 ) | $action << 7 ]
-  
-  # Byte 3: Runtime minutes
-  lappend bytes [ expr ( [ minutes_in_day $runtime ] % 60 ) ]
-
-  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFY(none) ]
-
-  if { $rv == 0 } {
-    set sem(countdown)         1
-    set sem(countdown_active)  $action
-    set sem(countdown_runtime) $runtime
-  }
-
-  return $rv
-
-}
-
-
-
-
-proc _convert_measurement {n n100 f} {
-
-  scan $n %d n
-  scan $n100 %d n100
-  scan $f %d f
-
-  set rv [ expr ( $n100 * 100 + $n ) ]
-  set rv [ expr $rv / pow(10, 4 - $f) ]
-  return $rv
-
-}
-
-
-
-
-proc capture_measurement {} {
-
-  global HANDLE
-  global NOTIFY
-  global sem
-
-  set bytes [ gatt_grab_notification_handle $NOTIFY(measurement) ]
-
-  if { [ llength $bytes ] != 16 } {
-    return -1
-  }
-
-  set sem(power)     [ expr [ lindex $bytes 0 ] & 1 ]
-  set sem(countdown) [ expr ( [ lindex $bytes 0 ] & 2 ) >> 1 ]
-
-  # convert back to "hex"
-  set n {}
-  foreach b $bytes {
-    lappend n [ decimal_to_hex $b ]
-  }
-
-  # Voltage
-  set sem(latest_voltage) [ _convert_measurement [ lindex $n 3 ] [ lindex $n 2 ] [ lindex $n 1 ] ]
-
-  # Ampere
-  set sem(latest_ampere) [ _convert_measurement [ lindex $n 6 ] [ lindex $n 5 ] [ lindex $n 4 ] ]
-
-  # Watts
-  set sem(latest_watts) [ _convert_measurement [ lindex $n 9 ] [ lindex $n 8 ] [ lindex $n 7 ] ]
-
-  # Power factor
-  set sem(latest_factor) [ _convert_measurement [ lindex $n 12 ] [ lindex $n 11 ] [ lindex $n 10 ] ]
-
-  # Frequency
-  set sem(latest_frequency) [ _convert_measurement [ lindex $n 15 ] [ lindex $n 14 ] [ lindex $n 13 ] ]
-
-  return 0
 
 }
 
@@ -938,10 +1172,8 @@ proc init { level } {
     if { $sem(initialized) != 1 && $level & $INIT(auth) } {
       req_sync
       if { $sem(initialized) != 1 } {
-        puts "Initialization failed."
+        puts "ERROR:\tInitialization failed"
         exit -1
-      } else {
-        log "Initialization successful"
       }
     }
     if { $sem(subscribe_cmd) != 1 && $level & $INIT(subscribe_cmd) } {
@@ -951,7 +1183,7 @@ proc init { level } {
       set sem(subscribe_measures) [ req_subscribe_notification $HANDLE(subscribe_measures) 1 ]
     }
   } else {
-    puts "Connection failed."
+    puts "ERROR:\tConnection failed"
     exit -1
   }
 
@@ -966,6 +1198,7 @@ proc do_command { command } {
 
   global INIT
   global sem
+  global verbose
 
   switch -regexp $command {
     ^sync$ {
@@ -1044,13 +1277,13 @@ proc do_command { command } {
       if { [ llength $command ] == 3 } {
 
         set _c [ lindex $command 2 ]
-        
+
         check_command $command 2 "scheduler" {^scheduler [1-6] (set|unset|reset)$}
-        
+
         set start $sem("scheduler_start_$n")
         set start_action $sem("scheduler_start_action_$n")
         set stop $sem("scheduler_stop_$n")
-        set stop_action $sem("scheduler_stop_action_$n")        
+        set stop_action $sem("scheduler_stop_action_$n")
         set week_mask $sem("scheduler_daymask_$n")
 
         if { $_c == "set" } {
@@ -1071,16 +1304,16 @@ proc do_command { command } {
 
         if { [ llength $command ] == 6 } {
           append command " _______"
-        } 
+        }
 
         if { [ lindex $command 6 ] == "sameday" } {
           set command [lreplace $command 6 6]
-          append command " [ _sameday_week_mask ]"
+          append command " [ sameday_week_mask ]"
         }
 
         check_command $command 6 "scheduler" {^scheduler [1-6] (on|off) ([0-2][0-9]:[0-5][0-9]|\+[0-9]+) (on|off) ([0-2][0-9]:[0-5][0-9]|\+[1-9][0-9]*) [Ss_][Mm_][Tt_][Ww_][Tt_][Ff_][Ss_]$}
 
-        set start [ calc_time [ current_time ] [ lindex $command 3 ] ]
+        set start [ calc_time [ current_time_str ] [ lindex $command 3 ] ]
         set start_action [ expr [ lindex $command 2 ] == "on" ? 1 : 0 ]
         set stop [ calc_time $start [ lindex $command 5 ] ]
         set stop_action [ expr [ lindex $command 4 ] == "on" ? 1 : 0 ]
@@ -1091,7 +1324,16 @@ proc do_command { command } {
     }
     ^countdown.*$ {
 
-      if { [ llength $command ] == 2 && [ lindex $command 1 ] == "reset" } {
+      if { [ llength $command ] == 1 } {
+
+        init [ expr $INIT(auth) | $INIT(subscribe_cmd) | $INIT(subscribe_measures) ]
+        capture_measurement
+
+        if { $sem(countdown) == 1 } {
+          capture_countdown
+        }
+
+      } elseif { [ llength $command ] == 2 && [ lindex $command 1 ] == "reset" } {
 
         init $INIT(auth)
         set_countdown 0 "00:00"
@@ -1118,6 +1360,11 @@ proc do_command { command } {
     ^print$ {
 
       print_sem
+
+    }
+    ^verbose$ {
+
+      set verbose 1
 
     }
     ^debug$ {
