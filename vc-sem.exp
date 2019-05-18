@@ -1,0 +1,1187 @@
+#!/usr/bin/expect
+#
+# Shell script in order to control Voltcraft SEM 3600BT
+#
+# Note: requires package Tclx
+#
+# Version: 2019-04-28
+#
+# MIT License
+#
+# Copyright (c) 2019 heckie75
+#
+# Permission is hereby granted, free of charge, to any person obtaining
+# a copy of this software and associated documentation files
+# (the "Software"), to deal in the Software without restriction,
+# including without limitation the rights to use, copy, modify, merge,
+# publish, distribute, sublicense, and/or sell copies of the Software,
+# and to permit persons to whom the Software is furnished to do so,
+# subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+# IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+# CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+# TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH
+# THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+# sets output to stdout and debug
+log_user 0
+
+set MAC_PATTERN                "\[0-9A-F]{2}:\[0-9A-F]{2}:\[0-9A-F]{2}:\[0-9A-F]{2}:\[0-9A-F]{2}:\[0-9A-F]{2}"
+set WEEKDAYS                   "SMTWTFS"
+set KNOWN_SEMS_FILE            "~/.known_sems"
+set DELAY                      50
+
+set HANDLE(subscribe_measures) 19
+
+# char value handle: 0x0015 (21), uuid: 0000fee2
+set HANDLE(cmd)                24 
+set HANDLE(subscribe_cmd)      25
+
+set REQ_COMMAND(sync)          3
+set REQ_COMMAND(switch)        4
+set REQ_COMMAND(countdown)     6
+set REQ_COMMAND(set_scheduler) 12
+set REQ_COMMAND(scheduler)     14
+
+set NOTIFY(none)               -1
+# uuid: 0000fee1 => 18
+set NOTIFY(measurement)        18
+# uuid: 0000fee3 => 24
+set NOTIFY(cmd)                24
+
+set INIT(auth)                 1
+set INIT(subscribe_cmd)        2
+set INIT(subscribe_measures)   4
+set INIT(query_standby)        8
+set INIT(query_overload)       16
+set INIT(query_schedulers)     64
+set INIT(query_runtime)        128
+set INIT(firmware_revision)    256
+
+array set aliases              {}
+
+set sem(mac)                   ""
+set sem(alias)                 ""
+set sem(secret)                -1
+set sem(connected)             -1
+set sem(initialized)           -1
+set sem(power)                 -1
+set sem(countdown)             -1
+set sem(subscribe_cmd)         -1
+set sem(subscribe_measures)    -1
+
+set HELP(usage) "Usage: <mac/alias> -<command1> <parameters...> -<command2>\n\
+ \                                  <mac>: bluetooth mac address of bulb\n\
+ \                                  <alias>: you can use alias instead of mac address \n\
+ \                                           after you have run setup (see setup) \n\
+ \                                  <command>: For command and parameters"
+set HELP(sync) "\
+  -sync                              - synchronize time"
+
+set HELP(on) "\
+  -on                                - turn on socket"
+
+set HELP(off) "\
+  -off                               - turn off socket"
+
+set HELP(toggle) "\
+  -toggle                            - toggle socket"
+
+set HELP(measure) "\
+  -measure                           - take and print measurement incl. voltage, ampere, watts, power factor and frequency"
+
+set HELP(watch) "\
+  -watch \[<s>\]                       - watch measurements, optional duration in seconds (use 0 for single), otherwise forever"
+
+set HELP(scheduler) "\
+  -scheduler                         - query status of all schedulers, i.e. 1 - 6\n\
+\n\
+  -scheduler <n>                     - query status of given scheduler where n is 1 - 6\n\
+\n\
+  -scheduler <n> <on|off> <hh:mm|+mm> <on|off> <hh:mm|+mm> \[<smtwtfs>\]\n\
+\                                     n         - given scheduler, 1-6\n\
+\                                     on|off    - action of scheduler at start\n\
+\                                     hh:mm|+mm - start time or minutes from now\n\
+\                                     on|off    - action of scheduler at end\n\
+\                                     hh:mm|+mm - end time or minutes after start time, at least 1 minute \n\
+\                                     smtwtfs   - (optional) weekdays, use capital letters to set, e.g. sMTWTFs\n\
+\                                                 use the word \"sameday\" for same weekdays like today\n\
+\                                                 if weekdays are missing then scheduler runs only once
+\n\
+  -scheduler <n> <set|unset|reset>   - activate, deactivate or reset given scheduler"
+
+set HELP(countdown) "\
+  -countdown <on|off> <hh:mm|+mm>\n\
+\                                     on|off    - action of countdown\n\
+\                                     hh:mm|+mm - runtime of countdown\n\
+\n\
+  -countdown <reset>                 - reset countdown"
+
+set HELP(print) "\
+  -print                             - print gathered information"
+
+set HELP(sleep) "\
+  -sleep <n>                         - pause processing for n seconds"
+
+set HELP(debug) "\
+  -debug                             - print debug information and actions in gatttool"
+
+set HELP(help) "\
+  -help \[<command>\]                  - print general help or help for specific command"
+
+
+# logs output to file with process ID
+proc log { l } {
+
+  global pidfile
+  if { [ log_user ] != 0 } {
+    puts $l
+  }
+
+}
+
+
+# prints help output
+proc help { argv } {
+
+  global HELP
+
+  # print help for given command
+  if { [llength $argv] == 3 && [lindex $argv 1] == "-help" } {
+    set command [lindex $argv 2]
+    puts $HELP(usage)
+
+    if { [ info exists HELP($command) ] == 1 } {
+      puts "\n$HELP($command)\n"
+    } else {
+      puts "\nUnknown command <$command>.\n"
+    }
+    exit 1
+  } elseif { [llength $argv ] < 1 || [ lindex $argv 0 ] == "-help" } {
+    puts "$HELP(usage)\n"
+    puts "\nBasic commands:\n"
+    puts "$HELP(sync)"
+    puts "$HELP(on)"
+    puts "$HELP(off)"
+    puts "$HELP(toggle)"
+    puts ""
+    puts "$HELP(measure)"
+    puts "$HELP(watch)"
+    puts ""
+    puts "$HELP(scheduler)"
+    puts ""
+    puts "$HELP(countdown)"
+    puts ""
+    puts "$HELP(sleep)"
+    puts ""
+    puts "$HELP(debug)"
+    puts "$HELP(help)"
+    puts ""
+    exit 1
+  }
+
+}
+
+
+
+
+proc check_command {argv req command reg} {
+
+  global HELP
+
+  set check [regexp $reg [concat $argv]]
+
+  if { [ llength $argv ] <= $req || $check == 0 } {
+    puts $HELP(usage)
+    puts $HELP($command)
+    puts ""
+    exit 1
+  }
+
+}
+
+
+
+
+proc read_aliases {} {
+
+  global MAC_PATTERN
+  global KNOWN_SEMS_FILE
+  global aliases
+
+  if { [ file exists "$KNOWN_SEMS_FILE" ] == 0 } {
+    return
+  }
+
+  set fp [ open "$KNOWN_SEMS_FILE" r ]
+  fconfigure $fp -buffering line
+
+  gets $fp data
+  while { $data != "" } {
+    regexp "($MAC_PATTERN) (\.+)" $data matched _mac _name
+
+    set aliases($_mac) $_name
+    gets $fp data
+  }
+
+  close $fp
+
+}
+
+
+
+
+proc lookup_alias { pattern } {
+
+  global aliases
+  global sem
+
+  set mac ""
+
+  foreach _mac [ lsort [ array names aliases ] ] {
+    if { [ string first "$pattern" $aliases($_mac) ] != -1 } {
+      set mac $_mac
+      set sem(alias) $aliases($_mac)
+    }
+  }
+
+  return $mac
+
+}
+
+
+
+
+proc get_mac { id } {
+
+  global MAC_PATTERN
+
+  set mac ""
+
+  set is_mac [ regexp "$MAC_PATTERN" $id ]
+  if { $is_mac == 1 } {
+    set mac $id
+  } else {
+    read_aliases
+    set mac [ lookup_alias $id ]
+  }
+
+  return $mac
+
+}
+
+
+
+
+proc hex_to_decimal { s } {
+
+  scan $s %x d
+  return $d
+
+}
+
+
+
+
+proc decimal_to_hex { d } {
+
+  scan $d %d d
+  set h [ format %4.2x $d ]
+  set h [ string trim $h ]
+
+  if { [ expr [ string length $h ] % 2 ] == 1 } {
+    set h "0$h"
+  }
+
+  return $h
+
+}
+
+
+
+
+proc current_datetime {} {
+
+  return [ clock format [ clock seconds ] -format "%Y %m %d %H %M %S" ]
+
+}
+
+
+
+
+proc current_time {} {
+
+  return [ clock format [ clock seconds ] -format "%H:%M" ]
+
+}
+
+
+
+
+proc minutes_in_day { time } {
+
+  set part [ split $time ":" ]
+  scan [ lindex $part 0 ] %d hours
+  scan [ lindex $part 1 ] %d minutes
+  set m [ expr $hours * 60 + $minutes ]
+
+  return $m
+
+}
+
+
+
+
+proc calc_time { base time } {
+
+  if { [ string first ":" $time ] == -1 } {
+
+    set s [ expr ( [ minutes_in_day $base ] + $time ) * 60 ]
+    return [ clock format $s -format %H:%M -gmt true ]
+  }
+
+  set part [ split $time ":" ]
+  scan [ lindex $part 0 ] %d hours
+  scan [ lindex $part 1 ] %d minutes
+  set s [ expr $hours % 3600 * 3600 + $minutes % 60 * 60 ]
+
+  return [ clock format $s -format %H:%M -gmt true ]
+
+}
+
+
+
+
+proc current_datetime_str {} {
+
+  return [ clock format [ clock seconds ] -format "%Y-%m-%d %H:%M:%S" ]
+
+}
+
+
+
+
+proc _build_week_mask { b } {
+
+  global WEEKDAYS
+
+  set rv ""
+
+  for { set i 0 } { $i < 7 } { incr i } {
+
+    set day [ string range $WEEKDAYS $i $i ]
+    if { [ expr $b & 1 ] == 1 } {
+      append rv $day
+    } else {
+      append rv "_"
+    }
+
+    set b [ expr $b >> 1 ]
+  }
+
+  return $rv
+
+}
+
+
+
+
+proc _sameday_week_mask {} {
+
+  global WEEKDAYS
+
+  set rv "_______"
+  set d [ clock format [ clock seconds ] -format "%w" ]
+  set rv [ string replace $rv $d $d [ string range $WEEKDAYS $d $d ] ]
+
+  return $rv
+
+}
+
+
+
+
+proc _byte_for_week_mask { week_mask } {
+
+  global WEEKDAYS
+
+  set b 0
+  for { set i 6 } { $i >= 0 } { incr i -1 } {
+    if { [ string range $WEEKDAYS $i $i ] == [ string range $week_mask $i $i ] } {
+      set b [ expr $b | 1 ]
+    }
+    set b [ expr $b << 1 ]
+  }
+  set b [ expr $b >> 1 ]
+
+  return $b
+
+}
+
+
+
+
+proc endian { v } {
+
+  set b1 [ expr $v & 255 ]
+  set b2 [ expr $v >> 8 ]
+
+  return [ expr $b1 << 8 | $b2 ]
+
+}
+
+
+
+
+proc get_secret { mac } {
+
+  set mask { 105 76 111 103 105 99 }
+  set bytes_mac {}
+
+  foreach h [ split $mac ":" ] {
+    set d [ hex_to_decimal $h ]
+    lappend bytes_mac [ hex_to_decimal $h ]
+  }
+
+  set i 0
+  set secret 0
+  foreach b [ lreverse $bytes_mac ] {
+    set secret [ expr $secret + (($b ^ [lindex $mask $i]) & 255) ]
+    incr i
+  }
+
+  return $secret
+
+}
+
+
+
+
+proc print_sem {} {
+
+  global sem
+
+  set out "\n"
+  append out "\tMac:              $sem(mac)\n"
+  append out "\tSecret key (dec): $sem(secret)\n"
+  append out "\tSecret key (hex): 0x[decimal_to_hex $sem(secret) ]\n"
+
+  append out "\tInitialized:      [ expr $sem(initialized) == 1 ? "yes" : "no" ]\n"
+  append out "\tConnected:        [ expr $sem(connected) == 1 ? "yes" : "no" ]\n"
+  append out "\tAlias:            $sem(alias)\n"
+  append out "\n"
+  append out [ print_measurement ]
+  for { set i 0 } { $i < 6 } { incr i } {
+    append out [ print_scheduler $i ]
+  }
+
+  puts $out
+
+}
+
+
+
+
+proc print_measurement {} {
+
+  global sem
+
+  if { [ info exists sem(latest_voltage) ] == 0 } {
+    return ""
+  }
+
+  append out "\tMeasurement:\n"
+  append out "\t  Power:          [ expr $sem(power) == 1 ? "on" : "off" ]\n"
+  append out "\t  Countdown:      [ expr $sem(countdown) == 1 ? "on" : "off" ]\n"
+  append out "\t  Voltage:        $sem(latest_voltage) V\n"
+  append out "\t  Ampere:         $sem(latest_ampere) A\n"
+  append out "\t  Watts:          $sem(latest_watts) W\n"
+  append out "\t  Frequency:      $sem(latest_frequency) Hz\n"
+  append out "\t  Power factor:   $sem(latest_factor)\n"
+  append out "\n"
+
+  return $out
+
+}
+
+
+
+
+proc print_measurement_as_csv {} {
+
+  global sem
+
+  append out [ current_datetime_str ]
+  append out ";$sem(power);$sem(countdown);$sem(latest_voltage);$sem(latest_ampere)"
+  append out ";$sem(latest_watts);$sem(latest_frequency);$sem(latest_factor)"
+
+  return $out
+
+}
+
+
+
+
+proc print_scheduler { i } {
+
+  global sem
+
+  if { [ info exists sem("scheduler_stop_$i") ] == 0 } {
+    return ""
+  }
+
+  append out "\tScheduler [ expr $i + 1 ]:\n"
+  append out "\t  Active:         [ expr $sem("scheduler_active_$i") == 1 ? "on" : "off" ]\n"
+  append out "\t  Begin:          $sem("scheduler_start_$i") turn [ expr $sem("scheduler_start_action_$i") == 1 ? "on" : "off" ]\n"
+  append out "\t  End:            $sem("scheduler_stop_$i") turn [ expr $sem("scheduler_stop_action_$i") == 1 ? "on" : "off" ]\n"
+  append out "\t  Weekdays:       $sem("scheduler_daymask_$i")\n"
+  append out "\n"
+
+  return $out
+
+}
+
+
+
+
+proc gatt_connect { mac } {
+
+  expect "\[LE\]"
+  send "connect $mac\r"
+  expect "Connection successful" {
+    return 1
+  }
+  return 0
+
+}
+
+
+
+
+proc gatt_disconnect {} {
+
+  global DELAY
+  send "disconnect\r"
+  after $DELAY
+
+}
+
+
+
+
+proc gatt_char_write_req { handle bytes notify_handle } {
+
+  global DELAY
+  set rv -1
+
+  set hnd_hex [ decimal_to_hex $handle ]
+  set value ""
+  foreach b $bytes {
+    append value [ decimal_to_hex $b ]
+  }
+
+  log "gatt_char_write_req: char-write-req $hnd_hex $value"
+
+  send "char-write-req $hnd_hex $value\r"
+
+  if { $notify_handle > 0 } {
+    return [ gatt_grab_notification_handle $notify_handle ]
+  }
+
+  expect {
+    "Characteristic value was written successfully" {
+      log "ok"
+      set rv 0
+    }
+  }
+
+  after $DELAY
+
+  return $rv
+
+}
+
+
+
+
+proc gatt_grab_notification_handle { handle } {
+
+  global DELAY
+  set bytes {}
+
+  set hnd_hex [ decimal_to_hex $handle ]
+
+  expect -re "Notification handle = 0x00$hnd_hex value: " {
+    log "notification detected"
+  }
+  expect "\r" {
+    log "notification data received for notification handle $handle"
+  }
+
+  after $DELAY
+  set value $expect_out(buffer)
+  log "notification: 0x00$hnd_hex $value"
+
+  foreach s $value {
+    lappend bytes [ hex_to_decimal $s ]
+  }
+
+  return $bytes
+
+}
+
+
+
+
+proc req_sync {} {
+
+  global HANDLE
+  global NOTIFY
+  global REQ_COMMAND
+  global sem
+
+  set datetime [ current_datetime ]
+
+  set bytes {}
+
+  # Byte 1: Sync command
+  lappend bytes $REQ_COMMAND(sync)
+
+  # Byte 2-3: Year
+  lappend bytes [ endian [ lindex $datetime 0 ] ]
+
+  # Byte 4: Month
+  lappend bytes [ lindex $datetime 1 ]
+
+  # Byte 5: Day in month
+  lappend bytes [ lindex $datetime 2 ]
+
+  # Byte 6: Hour of day
+  lappend bytes [ lindex $datetime 3 ]
+
+  # Byte 7: Minutes
+  lappend bytes [ lindex $datetime 4 ]
+
+  # Byte 8: Seconds
+  lappend bytes [ lindex $datetime 5 ]
+
+  # Byte 9-10: Secret key
+  lappend bytes [ endian $sem(secret) ]
+
+  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFY(none) ]
+
+  if { $rv == 0 } {
+    set sem(initialized) 1
+  }
+
+  return $rv
+
+}
+
+
+
+
+proc req_switch { s } {
+
+  global HANDLE
+  global NOTIFY
+  global REQ_COMMAND
+  global sem
+
+  set bytes {}
+
+  # Byte 1: Switch command
+  lappend bytes $REQ_COMMAND(switch)
+
+  # Byte 2: Turn on (1) / turn off (0)
+  set s [ expr $s == 1 ? 1 : 0 ]
+  lappend bytes $s
+
+  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFY(none) ]
+
+  if { $rv == 0 } {
+    set sem(power) $s
+  }
+
+  return $rv
+
+}
+
+
+
+
+proc req_subscribe_notification { handle s } {
+
+  global NOTIFY
+  global sem
+
+  set bytes {}
+
+  # Byte 1: Subscribe/unsubscribe command
+  set s [ expr $s == 1 ? 1 : 0 ]
+  lappend bytes $s
+
+  # Byte 2: static 0
+  lappend bytes 0
+
+  set rv [ gatt_char_write_req $handle $bytes $NOTIFY(none) ]
+
+  return $rv
+
+}
+
+
+
+
+proc req_scheduler { i } {
+
+  global HANDLE
+  global NOTIFY
+  global REQ_COMMAND
+  global sem
+
+  set bytes {}
+  set i [ expr $i % 6 ]
+
+  # Byte 1: Scheduler command
+  lappend bytes $REQ_COMMAND(scheduler)
+
+  # Byte 2: id of scheduler
+  lappend bytes $i
+
+  # Byte 3-4: static
+  lappend bytes 0
+  lappend bytes 5
+
+  set bytes [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFY(cmd) ]
+  if { [ llength $bytes ] != 8 || [ lindex $bytes 0 ] != $REQ_COMMAND(scheduler) || [ lindex $bytes 1 ] != $i } {
+    return -1
+  }
+
+  set sem("scheduler_active_$i")       [ expr [ lindex $bytes 3 ] >> 7 ]
+  set sem("scheduler_daymask_$i")      [ _build_week_mask [ lindex $bytes 3 ] ]
+  set sem("scheduler_start_$i")        [ format %2.2d [ expr [ lindex $bytes 4 ] & 127 ] ]:[ format %2.2d [ lindex $bytes 5 ] ]
+  set sem("scheduler_start_action_$i") [ expr [ lindex $bytes 4 ] >> 7 ]
+  set sem("scheduler_stop_$i")         [ format %2.2d [ expr [ lindex $bytes 6 ] & 127 ] ]:[ format %2.2d [ lindex $bytes 7 ] ]
+  set sem("scheduler_stop_action_$i")  [ expr [ lindex $bytes 6 ] >> 7 ]
+
+  return 0
+
+}
+
+
+
+
+proc set_scheduler { i active start start_action stop stop_action week_mask } {
+
+  global HANDLE
+  global NOTIFY
+  global REQ_COMMAND
+  global sem
+
+  set bytes {}
+  set i [ expr $i % 6 ]
+
+  # Byte 1: Scheduler command
+  lappend bytes $REQ_COMMAND(set_scheduler)
+
+  # Byte 2: id of scheduler
+  lappend bytes $i
+
+  # Byte 3: always 0
+  lappend bytes 0
+
+  # Byte 4: Bits 1 - 7: Bits for weekdays from Sunday to Saturdays
+  #         Bit 8: Flag for active or inactive scheduler
+  lappend bytes [ expr [ _byte_for_week_mask $week_mask ] | $active << 7 ]
+
+  # Byte 5: Bits 1 - 5: Starting hour
+  #         Bit 8: Flag for action (1 = turn on, 0 = turn off)
+  lappend bytes [ expr ( [ minutes_in_day $start ] / 60 ) | $start_action << 7 ]
+
+  # Byte 6: Starting minutes
+  lappend bytes [ expr ( [ minutes_in_day $start ] % 60 ) ]
+
+  # Byte 7: Ending hour
+  lappend bytes [ expr ( [ minutes_in_day $stop ] / 60 ) | $stop_action << 7 ]
+
+  # Byte 8: Ending minutes
+  lappend bytes [ expr ( [ minutes_in_day $stop ] % 60 ) ]
+
+  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFY(none) ]
+
+  if { $rv == 0 } {
+    set sem("scheduler_active_$i")       $active
+    set sem("scheduler_daymask_$i")      $week_mask
+    set sem("scheduler_start_$i")        $start
+    set sem("scheduler_start_action_$i") $start_action
+    set sem("scheduler_stop_$i")         $stop
+    set sem("scheduler_stop_action_$i")  $stop_action
+  }
+
+  return $rv
+
+}
+
+
+
+
+proc set_countdown { action runtime } {
+
+  global HANDLE
+  global NOTIFY
+  global REQ_COMMAND
+  global sem
+
+  set bytes {}
+
+  # Byte 1: Countdown command
+  lappend bytes $REQ_COMMAND(countdown)
+
+  # Byte 2: Bits 1 - 5: Runtime hour
+  #         Bit 8: Flag for action (1 = turn on, 0 = turn off)
+  lappend bytes [ expr ( [ minutes_in_day $runtime ] / 60 ) | $action << 7 ]
+  
+  # Byte 3: Runtime minutes
+  lappend bytes [ expr ( [ minutes_in_day $runtime ] % 60 ) ]
+
+  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFY(none) ]
+
+  if { $rv == 0 } {
+    set sem(countdown)         1
+    set sem(countdown_active)  $action
+    set sem(countdown_runtime) $runtime
+  }
+
+  return $rv
+
+}
+
+
+
+
+proc _convert_measurement {n n100 f} {
+
+  scan $n %d n
+  scan $n100 %d n100
+  scan $f %d f
+
+  set rv [ expr ( $n100 * 100 + $n ) ]
+  set rv [ expr $rv / pow(10, 4 - $f) ]
+  return $rv
+
+}
+
+
+
+
+proc capture_measurement {} {
+
+  global HANDLE
+  global NOTIFY
+  global sem
+
+  set bytes [ gatt_grab_notification_handle $NOTIFY(measurement) ]
+
+  if { [ llength $bytes ] != 16 } {
+    return -1
+  }
+
+  set sem(power)     [ expr [ lindex $bytes 0 ] & 1 ]
+  set sem(countdown) [ expr ( [ lindex $bytes 0 ] & 2 ) >> 1 ]
+
+  # convert back to "hex"
+  set n {}
+  foreach b $bytes {
+    lappend n [ decimal_to_hex $b ]
+  }
+
+  # Voltage
+  set sem(latest_voltage) [ _convert_measurement [ lindex $n 3 ] [ lindex $n 2 ] [ lindex $n 1 ] ]
+
+  # Ampere
+  set sem(latest_ampere) [ _convert_measurement [ lindex $n 6 ] [ lindex $n 5 ] [ lindex $n 4 ] ]
+
+  # Watts
+  set sem(latest_watts) [ _convert_measurement [ lindex $n 9 ] [ lindex $n 8 ] [ lindex $n 7 ] ]
+
+  # Power factor
+  set sem(latest_factor) [ _convert_measurement [ lindex $n 12 ] [ lindex $n 11 ] [ lindex $n 10 ] ]
+
+  # Frequency
+  set sem(latest_frequency) [ _convert_measurement [ lindex $n 15 ] [ lindex $n 14 ] [ lindex $n 13 ] ]
+
+  return 0
+
+}
+
+
+
+
+proc init { level } {
+
+  global INIT
+  global HANDLE
+  global sem
+
+  if { $sem(connected) != 1 } {
+    set sem(connected) [ gatt_connect $sem(mac) ]
+  }
+
+  if { $sem(connected) == 1 } {
+    if { $sem(initialized) != 1 && $level & $INIT(auth) } {
+      req_sync
+      if { $sem(initialized) != 1 } {
+        puts "Initialization failed."
+        exit -1
+      } else {
+        log "Initialization successful"
+      }
+    }
+    if { $sem(subscribe_cmd) != 1 && $level & $INIT(subscribe_cmd) } {
+      set sem(subscribe_cmd) [ req_subscribe_notification $HANDLE(subscribe_cmd) 1 ]
+    }
+    if { $sem(subscribe_measures) != 1 && $level & $INIT(subscribe_measures) } {
+      set sem(subscribe_measures) [ req_subscribe_notification $HANDLE(subscribe_measures) 1 ]
+    }
+  } else {
+    puts "Connection failed."
+    exit -1
+  }
+
+  return $sem(connected)
+
+}
+
+
+
+
+proc do_command { command } {
+
+  global INIT
+  global sem
+
+  switch -regexp $command {
+    ^sync$ {
+
+      init $INIT(auth)
+
+    }
+    ^on$ {
+
+      init $INIT(auth)
+      req_switch 1
+
+    }
+    ^off$ {
+
+      init $INIT(auth)
+      req_switch 0
+
+    }
+    ^toggle$ {
+
+      init [ expr $INIT(auth) | $INIT(subscribe_measures) ]
+      capture_measurement
+      set s [ expr $sem(power) == 0 ? 1 : 0 ]
+      req_switch $s
+
+    }
+    ^measure$ {
+
+      init [ expr $INIT(auth) | $INIT(subscribe_measures) ]
+      capture_measurement
+
+    }
+    ^watch.*$ {
+
+      set until 0
+      if { [ llength $command ] > 1 } {
+        check_command $command 1 "watch" {^watch [0-9]+$}
+        set until [ expr [ clock seconds ] + [ lindex $command 1 ] ]
+      } else {
+        set until -1
+      }
+
+      init [ expr $INIT(auth) | $INIT(subscribe_measures) ]
+
+      set current_seconds -1
+      while { $current_seconds < $until || $until == -1 } {
+        capture_measurement
+        puts [ print_measurement_as_csv ]
+        set current_seconds [ clock seconds ]
+      }
+
+    }
+    ^scheduler$ {
+
+      init [ expr $INIT(auth) | $INIT(subscribe_cmd) ]
+      for { set n 0 } { $n < 6 } { incr n } {
+        req_scheduler $n
+      }
+
+    }
+    ^scheduler.*$ {
+
+      set _c "[ lindex $command 0 ] [ lindex $command 1 ]"
+      check_command $_c 1 "scheduler" {^scheduler [1-6]$}
+
+      init [ expr $INIT(auth) | $INIT(subscribe_cmd) ]
+
+      # index of scheduler
+      set n [ expr [ lindex $command 1 ] - 1 ]
+
+      # request current state
+      req_scheduler $n
+
+      # set / unset / reset
+      if { [ llength $command ] == 3 } {
+
+        set _c [ lindex $command 2 ]
+        
+        check_command $command 2 "scheduler" {^scheduler [1-6] (set|unset|reset)$}
+        
+        set start $sem("scheduler_start_$n")
+        set start_action $sem("scheduler_start_action_$n")
+        set stop $sem("scheduler_stop_$n")
+        set stop_action $sem("scheduler_stop_action_$n")        
+        set week_mask $sem("scheduler_daymask_$n")
+
+        if { $_c == "set" } {
+
+          set_scheduler $n 1 $start $start_action $stop $stop_action $week_mask
+
+        } elseif { $_c == "unset" } {
+
+          set_scheduler $n 0 $start $start_action $stop $stop_action $week_mask
+
+        } elseif { $_c == "reset" } {
+
+          set_scheduler $n 0 "00:00" 0 "00:00" 0 "_______"
+
+        }
+
+      } elseif { [ llength $command ] > 4 } {
+
+        if { [ llength $command ] == 6 } {
+          append command " _______"
+        } 
+
+        if { [ lindex $command 6 ] == "sameday" } {
+          set command [lreplace $command 6 6]
+          append command " [ _sameday_week_mask ]"
+        }
+
+        check_command $command 6 "scheduler" {^scheduler [1-6] (on|off) ([0-2][0-9]:[0-5][0-9]|\+[0-9]+) (on|off) ([0-2][0-9]:[0-5][0-9]|\+[1-9][0-9]*) [Ss_][Mm_][Tt_][Ww_][Tt_][Ff_][Ss_]$}
+
+        set start [ calc_time [ current_time ] [ lindex $command 3 ] ]
+        set start_action [ expr [ lindex $command 2 ] == "on" ? 1 : 0 ]
+        set stop [ calc_time $start [ lindex $command 5 ] ]
+        set stop_action [ expr [ lindex $command 4 ] == "on" ? 1 : 0 ]
+        set week_mask [ lindex $command 6 ]
+
+        set_scheduler $n 1 $start $start_action $stop $stop_action $week_mask
+      }
+    }
+    ^countdown.*$ {
+
+      if { [ llength $command ] == 2 && [ lindex $command 1 ] == "reset" } {
+
+        init $INIT(auth)
+        set_countdown 0 "00:00"
+
+      } else {
+
+        check_command $command 2 "countdown" {^countdown (on|off) ([0-2][0-9]:[0-5][0-9]|\+[0-9]+)$}
+
+        set runtime [ calc_time "00:00" [ lindex $command 2 ] ]
+        set action [ expr [ lindex $command 1 ] == "on" ? 1 : 0 ]
+
+        init $INIT(auth)
+        set_countdown $action $runtime
+
+      }
+
+    }
+    ^sleep.*$ {
+
+      check_command $command 1 "sleep" {^sleep [0-9]+$}
+      after [ expr [ lindex $command 1 ] * 1000 ]
+
+    }
+    ^print$ {
+
+      print_sem
+
+    }
+    ^debug$ {
+
+      log_user 1
+
+    }
+    ^.*$ {
+
+      help ""
+
+    }
+  }
+}
+
+
+
+
+######################### main #########################
+help $argv
+
+# 1. get mac
+set sem(mac) [ get_mac [ lindex $argv 0 ] ]
+if { $sem(mac) == "" } {
+  puts "Smart-energy-meter \"[ lindex $argv 0 ]\" currently not known. Edit ~/.known_sems file before using aliases."
+  exit 1
+}
+set argv [ lrange $argv 1 end ]
+
+# 2. calculate secret key
+set sem(secret) [ get_secret $sem(mac) ]
+
+# 3. Open interactive gatttool session
+spawn -noecho /usr/bin/gatttool -I
+
+## 4. collect commands
+set command {}
+while { 1 } {
+
+  set param [ lindex $argv 0 ]
+  set argv [ lrange $argv 1 end ]
+
+  if { [string range $param 0 0 ] == "-" } {
+    set param [string range $param 1 end ]
+    if { [ llength $command ] > 0 } {
+      do_command $command
+      set command {}
+    }
+    if { [ llength $argv] == 0 } {
+      do_command $param
+      break
+    }
+  }
+
+  lappend command $param
+
+  if { [ llength $argv ] == 0 } {
+    if { [ llength $command ] > 0 } {
+      do_command $command
+    }
+    break
+  }
+}
+
+# 5. close gatttool session
+gatt_disconnect
+close -i $spawn_id
