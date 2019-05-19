@@ -2,8 +2,6 @@
 #
 # Shell script in order to control Voltcraft SEM 3600BT
 #
-# Note: requires package Tclx
-#
 # Version: 2019-04-28
 #
 # MIT License
@@ -115,12 +113,8 @@ set HELP(watch) "\
   -watch \[<s>\]                       - watch measurements, optional duration in seconds (use 0 for single), otherwise forever"
 
 set HELP(scheduler) "\
-  -scheduler                         - query status of all schedulers, i.e. 1 - 6\n\
-\n\
-  -scheduler <n>                     - query status of given scheduler where n is 1 - 6\n\
-\n\
   -scheduler <n> <on|off> <hh:mm|+mm> <on|off> <hh:mm|+mm> \[<smtwtfs>\]\n\
-\                                     n         - given scheduler, 1-6\n\
+\                                     n         - given scheduler where n is 1 - 6\n\
 \                                     on|off    - action of scheduler at start\n\
 \                                     hh:mm|+mm - start time or minutes from now\n\
 \                                     on|off    - action of scheduler at end\n\
@@ -129,34 +123,53 @@ set HELP(scheduler) "\
 \                                                 use the word \"sameday\" for same weekdays like today\n\
 \                                                 if weekdays are missing then scheduler runs only once
 \n\
-  -scheduler <n> <set|unset|reset>   - activate, deactivate or reset given scheduler"
+  -scheduler <n> <set|unset|reset>   - activate, deactivate or reset given scheduler\n\
+\n\
+  -scheduler <n>                     - query status of given scheduler where n is 1 - 6\n\
+\n\
+  -scheduler reset                   - resets all schedulers, i.e. 1 - 6\n\
+\n\
+  -scheduler                         - query status of all schedulers, i.e. 1 - 6"
 
 set HELP(countdown) "\
-  -countdown                         - query status of countdown\n\
-\n\
   -countdown <on|off> <hh:mm|+mm>    - set countdown action and runtime\n\
 \                                     on|off    - action of countdown\n\
 \                                     hh:mm|+mm - runtime of countdown\n\
 \n\
-  -countdown <reset>                 - reset countdown"
+  -countdown <reset>                 - reset countdown\n\
+\n\
+  -countdown                         - query status of countdown"
 
 set HELP(overload) "\
+<<<<<<< HEAD
   -overload                          - query overload settings\n\
 \n\
   -overload <watts> <off> <alarm>    - set overload with high-water-mark and actions\n\
 \                                     watts - high-water-mark, max. 3699, e.g. 3699 for 3699W\n\
 \                                     off   - (optional) turn socket off if overloaded\n\
+=======
+  -overload <watts> <warn|off> <alarm>\n\
+\                                   - set overload with high-water-mark and actions\n\
+\                                     watts - high-water-mark, max. 3699, e.g. 3699 for 3699W\n\
+\                                     warn  - led blinks when overloaded\n\
+\                                     off   - turn socket off if overloaded\n\
+>>>>>>> Refactoring, added functionality for standby
 \                                     alarm - (optional) alarm if overloaded\n\
 \n\
-  -overload off                      - turn overload off"
+  -overload off                      - turn overload off\n\
+\n\
+  -overload                          - query overload settings"
 
 set HELP(standby) "\
-  -standby                           - query standby settings\n\
-\n\
-  -standby <watts>                   - set auto-power off if consumption is below water-mark\n\
+  -standby <watts> <warn|off>        - set standby mode if consumption is below water-mark\n\
 \                                     watts - low-water-mark, max. 30.00, e.g. 5.0 for 5.0W\n\
+\                                     warn - led blinks when standby detected\n\
+\                                     off  - auto turn off socket when standby detected\n\ 
 \n\
-  -standby off                       - turn standby mode off"
+  -standby off                       - turn standby mode off\n\
+\n\
+  -standby                           - query standby settings"
+
 
 set HELP(print) "\
   -print                             - print gathered information"
@@ -182,8 +195,8 @@ proc help { argv } {
   global HELP
 
   # print help for given command
-  if { [llength $argv] == 3 && [lindex $argv 1] == "-help" } {
-    set command [lindex $argv 2]
+  if { [llength $argv] == 2 && [lindex $argv 0] == "-help" } {
+    set command [lindex $argv 1]
     puts $HELP(usage)
 
     if { [ info exists HELP($command) ] == 1 } {
@@ -195,24 +208,32 @@ proc help { argv } {
   } elseif { [llength $argv ] < 1 || [ lindex $argv 0 ] == "-help" } {
     puts "$HELP(usage)\n"
     puts "\nBasic commands:\n"
-    puts "$HELP(sync)"
     puts "$HELP(on)"
     puts "$HELP(off)"
     puts "$HELP(toggle)"
-    puts ""
-    puts "$HELP(measure)"
-    puts "$HELP(watch)"
-    puts ""
+    puts "\nScheduler commands:\n"
     puts "$HELP(scheduler)"
-    puts ""
+    puts "\nCountdown commands:\n"
     puts "$HELP(countdown)"
+<<<<<<< HEAD
     puts ""
     puts "$HELP(overload)"
     puts ""
     puts "$HELP(standby)"
     puts ""
+=======
+    puts "\nPower commands:\n"
+    puts "$HELP(overload)\n"
+    puts "$HELP(standby)"
+    puts "\nMeasurement commands:\n"
+    puts "$HELP(measure)"
+    puts "$HELP(watch)"
+    puts "\nOther commands:\n"
+    puts "$HELP(print)"
+    puts "$HELP(sync)"
+>>>>>>> Refactoring, added functionality for standby
     puts "$HELP(sleep)"
-    puts ""
+    puts "$HELP(verbose)"
     puts "$HELP(debug)"
     puts "$HELP(help)"
     puts ""
@@ -767,6 +788,81 @@ proc req_switch { s } {
   # Byte 2: Turn on (1) / turn off (0)
   set s [ expr $s == 1 ? 1 : 0 ]
   lappend bytes $s
+<<<<<<< HEAD
+=======
+
+  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(none) ]
+
+  if { $rv != -1 } {
+
+    log "INFO:\tSEM successfully switched"
+    set sem(power) $s
+    return 0
+
+  } else {
+
+    log "ERROR:\tSwitching SEM failed"
+    return -1
+  }
+
+}
+
+
+
+
+proc req_subscribe_notification { handle s } {
+
+  global NOTIFIED
+  global sem
+
+  set bytes {}
+
+  log "INFO:\tSubscribe for notification handle 0x[ decimal_to_hex $handle ]"
+
+  # Byte 1: Subscribe/unsubscribe command
+  set s [ expr $s == 1 ? 1 : 0 ]
+  lappend bytes $s
+
+  # Byte 2: static 0
+  lappend bytes 0
+
+  set rv [ gatt_char_write_req $handle $bytes $NOTIFIED(none) ]
+
+  if { $rv != -1 } {
+
+    log "INFO:\tSuccessfully subscripted to notification handle 0x[ decimal_to_hex $handle ]"
+    return 0
+
+  } else {
+
+    log "ERROR:\tSubscription to notification handle 0x[ decimal_to_hex $handle ] failed"
+    return -1
+
+  }
+
+}
+
+
+
+
+proc req_scheduler { i } {
+
+  global HANDLE
+  global NOTIFIED
+  global REQ_COMMAND
+  global sem
+
+  set bytes {}
+  set i [ expr $i % 6 ]
+
+  log "INFO:\tRequest scheduler [ expr $i + 1 ]"
+
+  # Byte 1: Scheduler command
+  lappend bytes $REQ_COMMAND(scheduler)
+
+  # Byte 2: id of scheduler
+  lappend bytes $i
+>>>>>>> Refactoring, added functionality for standby
 
   set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(none) ]
 
@@ -1244,6 +1340,7 @@ proc req_overload { } {
 
 
 proc parse_overload { bytes } {
+<<<<<<< HEAD
 
   global sem
   global REQ_COMMAND
@@ -1291,6 +1388,60 @@ proc set_overload { threshold turnoff alarm } {
 
   global HANDLE
   global NOTIFIED
+=======
+
+  global sem
+  global REQ_COMMAND
+  global NOTIFIED
+
+  if { [ lindex $bytes 0 ] != $REQ_COMMAND(overload) && [ llength $bytes ] != 4 } {
+    return 0
+  }
+
+  set sem(overload)         [ expr [ lindex $bytes 2 ] + [ lindex $bytes 3 ] * 256 ]
+  set sem(overload_turnoff) [ expr ( [ lindex $bytes 1 ] & 128 ) >> 7 ]
+  set sem(overload_alarm)   [ expr ( [ lindex $bytes 1 ] & 64 ) >> 6 ]
+
+  log [ print_overload ]
+
+  return $NOTIFIED(overload)
+
+}
+
+
+
+
+proc print_overload {} {
+
+  global sem
+
+  set out ""
+
+  if { $sem(overload) != -1 } {
+    append out "\tOverload:\n"
+    append out "\t  Threshold:      $sem(overload) W\n"
+    if { $sem(overload_turnoff) == 1 } {
+      append out "\t  Action:         turn off\n"
+    } else {
+      append out "\t  Action:         blink\n"
+    }
+    
+    append out "\t  Alarm:          [ expr $sem(overload_alarm) == 1 ? "yes" : "no" ]\n"
+    append out "\n"
+  }
+
+  return $out
+
+}
+
+
+
+
+proc set_overload { threshold turnoff alarm } {
+
+  global HANDLE
+  global NOTIFIED
+>>>>>>> Refactoring, added functionality for standby
   global REQ_COMMAND
   global sem
 
@@ -1394,6 +1545,7 @@ proc parse_standby { bytes } {
 proc print_standby {} {
 
   global sem
+<<<<<<< HEAD
 
   set out ""
 
@@ -1401,6 +1553,19 @@ proc print_standby {} {
     append out "\tStandby:\n"
     append out "\t  Threshold:     $sem(standby)W\n"
     append out "\t  Active:        [ expr $sem(standby_active) == 1 ? "yes" : "no" ]\n"
+=======
+
+  set out ""
+
+  if { $sem(standby) != -1 } {
+    append out "\tStandby:\n"
+    append out "\t  Threshold:      $sem(standby) W\n"
+    if { $sem(standby_active) == 1 } {
+      append out "\t  Action:         turn off\n"
+    } else {
+      append out "\t  Action:         blink\n"
+    }
+>>>>>>> Refactoring, added functionality for standby
     append out "\n"
   }
 
@@ -1444,7 +1609,11 @@ proc set_standby { threshold active } {
   set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(none) ]
 
   if { $rv != -1 } {
+<<<<<<< HEAD
     set sem(standby)         $threshold
+=======
+    set sem(standby)         [ expr $threshold / 1000.0 ]
+>>>>>>> Refactoring, added functionality for standby
     set sem(standby_active)  $active
 
     log "INFO:\tStandby successfully set"
@@ -1525,6 +1694,14 @@ proc do_command { command } {
       init [ expr $INIT(auth) | $INIT(subscribe_cmd) ]
       for { set n 0 } { $n < 6 } { incr n } {
         req_scheduler $n
+      }
+
+    }
+    ^scheduler\ reset$ {
+
+      init [ expr $INIT(auth) | $INIT(subscribe_cmd) ]
+      for { set n 0 } { $n < 6 } { incr n } {
+        set_scheduler $n 0 "00:00" 0 "00:00" 0 "_______"
       }
 
     }
@@ -1633,10 +1810,12 @@ proc do_command { command } {
 
       } elseif { [ llength $command ] == 3 } {
 
-        check_command $command 2 "overload" {^overload [1-3]?[0-9]{1,3} (off|alarm)$}
+        check_command $command 2 "overload" {^overload [1-3]?[0-9]{1,3} (warn|off|alarm)$}
 
         init $INIT(auth)
-        if { [ lindex $command 2 ] == "off" } {
+        if { [ lindex $command 2 ] == "warn" } {
+          set_overload [ lindex $command 1 ] 0 0
+        } elseif { [ lindex $command 2 ] == "off" } {
           set_overload [ lindex $command 1 ] 1 0
         } else {
           set_overload [ lindex $command 1 ] 0 1
@@ -1644,14 +1823,44 @@ proc do_command { command } {
 
       } else {
 
-        check_command $command 3 "overload" {^overload [1-3]?[0-9]{1,3} off alarm$}
-        
+        check_command $command 3 "overload" {^overload [1-3]?[0-9]{1,3} (warn|off) alarm$}
+
         init $INIT(auth)
-        set_overload [ lindex $command 1 ] 1 1
+        if { [ lindex $command 2 ] == "warn" } {
+          set_overload [ lindex $command 1 ] 0 1
+        } else {
+          set_overload [ lindex $command 1 ] 1 1
+        }
+      }
+
+    }
+    ^standby.*$ {
+
+      if { [ llength $command ] == 1 } {
+
+        init [ expr $INIT(auth) | $INIT(subscribe_cmd) ]
+        req_standby
+
+      } elseif { [ llength $command ] == 2 && [ lindex $command 1 ] == "off" } {
+
+        init $INIT(auth)
+        set_standby 0 0
+
+      } else {
+
+        check_command $command 1 "standby" {^standby [0-9](.[0-9]{1,3})* (warn|off)$}
+
+        init $INIT(auth)
+        if { [ lindex $command 2 ] == "warn" } {
+          set_standby [ lindex $command 1 ] 0
+        } else {
+          set_standby [ lindex $command 1 ] 1
+        }
 
       }
 
     }
+<<<<<<< HEAD
     ^standby.*$ {
 
       if { [ llength $command ] == 1 } {
@@ -1674,6 +1883,8 @@ proc do_command { command } {
       }
 
     }  
+=======
+>>>>>>> Refactoring, added functionality for standby
     ^sleep.*$ {
 
       check_command $command 1 "sleep" {^sleep [0-9]+$}
@@ -1692,12 +1903,22 @@ proc do_command { command } {
     }
     ^device^ {
 
+<<<<<<< HEAD
 
       
+=======
+>>>>>>> Refactoring, added functionality for standby
     }
     ^debug$ {
 
       log_user 1
+
+    }
+    ^help\ .+$ {
+
+      set h { "-help" }
+      lappend h [ lindex $command 1 ]
+      help $h
 
     }
     ^.*$ {
