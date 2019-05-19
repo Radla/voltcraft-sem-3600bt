@@ -52,6 +52,8 @@ set REQ_COMMAND(switch)        4
 set REQ_COMMAND(countdown)     6
 set REQ_COMMAND(set_scheduler) 12
 set REQ_COMMAND(scheduler)     14
+set REQ_COMMAND(set_standby)   19
+set REQ_COMMAND(standby)       20
 set REQ_COMMAND(set_overload)  21
 set REQ_COMMAND(overload)      22
 
@@ -73,6 +75,7 @@ set NOTIFIED(measurement)      1
 set NOTIFIED(scheduler)        2
 set NOTIFIED(countdown)        4
 set NOTIFIED(overload)         8
+set NOTIFIED(standby)         16
 
 array set aliases              {}
 
@@ -84,6 +87,7 @@ set sem(initialized)           -1
 set sem(power)                 -1
 set sem(countdown)             -1
 set sem(overload)              -1
+set sem(standby)               -1
 set sem(subscribe_cmd)         -1
 set sem(subscribe_measures)    -1
 
@@ -140,7 +144,7 @@ set HELP(overload) "\
   -overload                          - query overload settings\n\
 \n\
   -overload <watts> <off> <alarm>    - set overload with high-water-mark and actions\n\
-\                                     watts - high-water-mark, max. 3000, e.g. 3000 for 3000W\n\
+\                                     watts - high-water-mark, max. 3699, e.g. 3699 for 3699W\n\
 \                                     off   - (optional) turn socket off if overloaded\n\
 \                                     alarm - (optional) alarm if overloaded\n\
 \n\
@@ -168,20 +172,6 @@ set HELP(debug) "\
 
 set HELP(help) "\
   -help \[<command>\]                  - print general help or help for specific command"
-
-
-# logs output to stdout
-proc log { l } {
-
-  global verbose
-
-  if { $verbose != 0 } {
-
-    puts $l
-
-  }
-
-}
 
 
 
@@ -219,6 +209,8 @@ proc help { argv } {
     puts ""
     puts "$HELP(overload)"
     puts ""
+    puts "$HELP(standby)"
+    puts ""
     puts "$HELP(sleep)"
     puts ""
     puts "$HELP(debug)"
@@ -232,18 +224,27 @@ proc help { argv } {
 
 
 
-proc check_command {argv req command reg} {
+proc print_sem {} {
 
-  global HELP
+  global sem
 
-  set check [ regexp $reg [ concat $argv ] ]
+  set out "\n"
+  append out "\tMac:              $sem(mac)\n"
+  append out "\tSecret key (dec): $sem(secret)\n"
+  append out "\tSecret key (hex): 0x[decimal_to_hex $sem(secret) ]\n"
 
-  if { [ llength $argv ] <= $req || $check == 0 } {
-    puts $HELP(usage)
-    puts $HELP($command)
-    puts ""
-    exit 1
+  append out "\tInitialized:      [ expr $sem(initialized) == 1 ? "yes" : "no" ]\n"
+  append out "\tConnected:        [ expr $sem(connected) == 1 ? "yes" : "no" ]\n"
+  append out "\tAlias:            $sem(alias)\n"
+  append out "\n"
+  append out [ print_measurement ]
+  for { set i 0 } { $i < 6 } { incr i } {
+    append out [ print_scheduler $i ]
   }
+  append out [ print_countdown ]
+  append out [ print_overload ]
+  append out [ print_standby ]
+  puts $out
 
 }
 
@@ -504,130 +505,36 @@ proc get_secret { mac } {
 
 
 
-proc print_sem {} {
+proc init { level } {
 
+  global INIT
+  global HANDLE
   global sem
 
-  set out "\n"
-  append out "\tMac:              $sem(mac)\n"
-  append out "\tSecret key (dec): $sem(secret)\n"
-  append out "\tSecret key (hex): 0x[decimal_to_hex $sem(secret) ]\n"
-
-  append out "\tInitialized:      [ expr $sem(initialized) == 1 ? "yes" : "no" ]\n"
-  append out "\tConnected:        [ expr $sem(connected) == 1 ? "yes" : "no" ]\n"
-  append out "\tAlias:            $sem(alias)\n"
-  append out "\n"
-  append out [ print_measurement ]
-  for { set i 0 } { $i < 6 } { incr i } {
-    append out [ print_scheduler $i ]
-  }
-  append out [ print_countdown ]
-  append out [ print_overload ]
-  puts $out
-
-}
-
-
-
-
-proc print_measurement {} {
-
-  global sem
-
-  if { [ info exists sem(latest_voltage) ] == 0 } {
-    return ""
+  if { $sem(connected) != 1 } {
+    set sem(connected) [ gatt_connect $sem(mac) ]
   }
 
-  append out "\tMeasurement:\n"
-  append out "\t  Power:          [ expr $sem(power) == 1 ? "on" : "off" ]\n"
-  append out "\t  Countdown:      [ expr $sem(countdown) == 1 ? "on" : "off" ]\n"
-  append out "\t  Voltage:        $sem(latest_voltage) V\n"
-  append out "\t  Ampere:         $sem(latest_ampere) A\n"
-  append out "\t  Watts:          $sem(latest_watts) W\n"
-  append out "\t  Frequency:      $sem(latest_frequency) Hz\n"
-  append out "\t  Power factor:   $sem(latest_factor)\n"
-  append out "\n"
-
-  return $out
-
-}
-
-
-
-
-proc print_measurement_as_csv {} {
-
-  global sem
-
-  append out [ current_datetime_str ]
-  append out ";$sem(power);$sem(countdown);$sem(latest_voltage);$sem(latest_ampere)"
-  append out ";$sem(latest_watts);$sem(latest_frequency);$sem(latest_factor)"
-
-  return $out
-
-}
-
-
-
-
-proc print_scheduler { i } {
-
-  global sem
-
-  if { [ info exists sem("scheduler_stop_$i") ] == 0 } {
-    return ""
+  if { $sem(connected) == 1 } {
+    if { $sem(initialized) != 1 && $level & $INIT(auth) } {
+      req_sync
+      if { $sem(initialized) != 1 } {
+        puts "ERROR:\tInitialization failed"
+        exit -1
+      }
+    }
+    if { $sem(subscribe_cmd) != 1 && $level & $INIT(subscribe_cmd) } {
+      set sem(subscribe_cmd) [ req_subscribe_notification $HANDLE(subscribe_cmd) 1 ]
+    }
+    if { $sem(subscribe_measures) != 1 && $level & $INIT(subscribe_measures) } {
+      set sem(subscribe_measures) [ req_subscribe_notification $HANDLE(subscribe_measures) 1 ]
+    }
+  } else {
+    puts "ERROR:\tConnection failed"
+    exit -1
   }
 
-  append out "\tScheduler [ expr $i + 1 ]:\n"
-  append out "\t  Active:         [ expr $sem("scheduler_active_$i") == 1 ? "on" : "off" ]\n"
-  append out "\t  Begin:          $sem("scheduler_start_$i") turn [ expr $sem("scheduler_start_action_$i") == 1 ? "on" : "off" ]\n"
-  append out "\t  End:            $sem("scheduler_stop_$i") turn [ expr $sem("scheduler_stop_action_$i") == 1 ? "on" : "off" ]\n"
-  append out "\t  Weekdays:       $sem("scheduler_daymask_$i")\n"
-  append out "\n"
-
-  return $out
-
-}
-
-
-
-
-proc print_countdown {} {
-
-  global sem
-
-  set out ""
-
-  if { [ info exists sem(countdown_action) ] != 0 } {
-    append out "\tCountdown:        on\n"
-    append out "\t  Action:         [ expr $sem(countdown_action) == 1 ? "on" : "off" ]\n"
-    append out "\t  Remaining:      $sem(countdown_runtime)\n"
-    append out "\t  ETA:            [ calc_time [ current_time_str ] [ time_in_minutes $sem(countdown_runtime) ] ]\n"
-    append out "\n"
-  }
-
-  return $out
-
-}
-
-
-
-
-proc print_overload {} {
-
-  global sem
-
-  set out ""
-
-  if { $sem(overload) != -1 } {
-    append out "\tOverload:\n"
-    append out "\t  Threshold:     $sem(overload)W\n"
-    append out "\t  Turn off:      [ expr $sem(overload_turnoff) == 1 ? "yes" : "no" ]\n"
-    append out "\t  Alarm:         [ expr $sem(overload_alarm) == 1 ? "yes" : "no" ]\n"    
-    append out "\n"
-  }
-
-  return $out
+  return $sem(connected)
 
 }
 
@@ -769,6 +676,11 @@ proc gatt_grab_notification_handle { notification_level } {
       # overload notification
       set notified [ expr $notified | [ parse_overload $bytes ] ]
 
+    } elseif { $handle == $NOTIFY(cmd) && [ llength $bytes ] == 4 && [ lindex $bytes 0 ] == $REQ_COMMAND(standby) } {
+
+      # standby notification
+      set notified [ expr $notified | [ parse_standby $bytes ] ]
+
     } else {
       log "WARNING:\tUnknown notification received, 0x$buffer"
     }
@@ -776,6 +688,62 @@ proc gatt_grab_notification_handle { notification_level } {
   }
 
   return $notified
+
+}
+
+
+
+
+proc req_sync {} {
+
+  global HANDLE
+  global NOTIFIED
+  global REQ_COMMAND
+  global sem
+
+  set datetime [ current_datetime ]
+
+  set bytes {}
+
+  log "INFO:\tSync SEM"
+
+  # Byte 1: Sync command
+  lappend bytes $REQ_COMMAND(sync)
+
+  # Byte 2-3: Year
+  lappend bytes [ endian [ lindex $datetime 0 ] ]
+
+  # Byte 4: Month
+  lappend bytes [ lindex $datetime 1 ]
+
+  # Byte 5: Day in month
+  lappend bytes [ lindex $datetime 2 ]
+
+  # Byte 6: Hour of day
+  lappend bytes [ lindex $datetime 3 ]
+
+  # Byte 7: Minutes
+  lappend bytes [ lindex $datetime 4 ]
+
+  # Byte 8: Seconds
+  lappend bytes [ lindex $datetime 5 ]
+
+  # Byte 9-10: Secret key
+  lappend bytes [ endian $sem(secret) ]
+
+  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(none) ]
+
+  if { $rv != -1 } {
+
+    log "INFO:\tSEM synced successfully"
+    set sem(initialized) 1
+
+  } else {
+
+    log "ERROR:\tSynchronization of SEM failed"
+    return -1
+
+  }
 
 }
 
@@ -812,6 +780,41 @@ proc req_switch { s } {
 
     log "ERROR:\tSwitching SEM failed"
     return -1
+  }
+
+}
+
+
+
+
+proc req_subscribe_notification { handle s } {
+
+  global NOTIFIED
+  global sem
+
+  set bytes {}
+
+  log "INFO:\tSubscribe for notification handle 0x[ decimal_to_hex $handle ]"
+
+  # Byte 1: Subscribe/unsubscribe command
+  set s [ expr $s == 1 ? 1 : 0 ]
+  lappend bytes $s
+
+  # Byte 2: static 0
+  lappend bytes 0
+
+  set rv [ gatt_char_write_req $handle $bytes $NOTIFIED(none) ]
+
+  if { $rv != -1 } {
+
+    log "INFO:\tSuccessfully subscripted to notification handle 0x[ decimal_to_hex $handle ]"
+    return 0
+
+  } else {
+
+    log "ERROR:\tSubscription to notification handle 0x[ decimal_to_hex $handle ] failed"
+    return -1
+
   }
 
 }
@@ -887,6 +890,28 @@ proc parse_scheduler { bytes } {
 
 
 
+proc print_scheduler { i } {
+
+  global sem
+
+  if { [ info exists sem("scheduler_stop_$i") ] == 0 } {
+    return ""
+  }
+
+  append out "\tScheduler [ expr $i + 1 ]:\n"
+  append out "\t  Active:         [ expr $sem("scheduler_active_$i") == 1 ? "on" : "off" ]\n"
+  append out "\t  Begin:          $sem("scheduler_start_$i") turn [ expr $sem("scheduler_start_action_$i") == 1 ? "on" : "off" ]\n"
+  append out "\t  End:            $sem("scheduler_stop_$i") turn [ expr $sem("scheduler_stop_action_$i") == 1 ? "on" : "off" ]\n"
+  append out "\t  Weekdays:       $sem("scheduler_daymask_$i")\n"
+  append out "\n"
+
+  return $out
+
+}
+
+
+
+
 proc set_scheduler { i active start start_action stop stop_action week_mask } {
 
   global HANDLE
@@ -953,6 +978,74 @@ proc set_scheduler { i active start start_action stop stop_action week_mask } {
 
 
 
+proc capture_countdown {} {
+
+  global NOTIFIED
+  global sem
+
+  set rv [ gatt_grab_notification_handle $NOTIFIED(countdown) ]
+
+  if { [ expr $rv & $NOTIFIED(countdown) ] == $NOTIFIED(countdown) } {
+
+    log "INFO:\tCountdown successfully captured"
+    return 0
+
+  } else {
+
+    log "ERROR:\tCapturing countdown failed"
+    return -1
+
+  }
+
+}
+
+
+
+
+proc parse_countdown { bytes } {
+
+  global sem
+  global REQ_COMMAND
+  global NOTIFIED
+
+  if { [ lindex $bytes 0 ] != $REQ_COMMAND(countdown) && [ llength $bytes ] != 4 } {
+    return 0
+  }
+
+  set sem(countdown)         1
+  set sem(countdown_runtime) [ format %2.2d [ expr [ lindex $bytes 1 ] & 127 ] ]:[ format %2.2d [ lindex $bytes 2 ] ]:[ format %2.2d [ lindex $bytes 3 ] ]
+  set sem(countdown_action)  [ expr [ lindex $bytes 1 ] >> 7 ]
+
+  log [ print_countdown ]
+
+  return $NOTIFIED(countdown)
+
+}
+
+
+
+
+proc print_countdown {} {
+
+  global sem
+
+  set out ""
+
+  if { [ info exists sem(countdown_action) ] != 0 } {
+    append out "\tCountdown:        on\n"
+    append out "\t  Action:         [ expr $sem(countdown_action) == 1 ? "on" : "off" ]\n"
+    append out "\t  Remaining:      $sem(countdown_runtime)\n"
+    append out "\t  ETA:            [ calc_time [ current_time_str ] [ time_in_minutes $sem(countdown_runtime) ] ]\n"
+    append out "\n"
+  }
+
+  return $out
+
+}
+
+
+
+
 proc set_countdown { action runtime } {
 
   global HANDLE
@@ -990,102 +1083,6 @@ proc set_countdown { action runtime } {
     return -1
 
   }
-
-}
-
-
-
-
-proc parse_countdown { bytes } {
-
-  global sem
-  global REQ_COMMAND
-  global NOTIFIED
-
-  if { [ lindex $bytes 0 ] != $REQ_COMMAND(countdown) && [ llength $bytes ] != 4 } {
-    return 0
-  }
-
-  set sem(countdown)         1
-  set sem(countdown_runtime) [ format %2.2d [ expr [ lindex $bytes 1 ] & 127 ] ]:[ format %2.2d [ lindex $bytes 2 ] ]:[ format %2.2d [ lindex $bytes 3 ] ]
-  set sem(countdown_action)  [ expr [ lindex $bytes 1 ] >> 7 ]
-
-  log [ print_countdown ]
-
-  return $NOTIFIED(countdown)
-
-}
-
-
-
-
-proc set_overload { threshold turnoff alarm } {
-
-  global HANDLE
-  global NOTIFIED
-  global REQ_COMMAND
-  global sem
-
-  set bytes {}
-
-  log "INFO:\tSet overload"
-
-  if { $threshold > 3000 } {
-    set threshold 3000
-  }
-
-  # Byte 1: Overload command
-  lappend bytes $REQ_COMMAND(set_overload)
-
-  # Byte 2: Bit 7: Alarm
-  #         Bit 8: Turnoff
-  lappend bytes [ expr $turnoff << 7 | $alarm << 6 ]
-
-  # Byte 3: Threshold in watts
-  lappend bytes [ expr $threshold & 255 ]
-
-  # Byte 4: Threshold in watts
-  lappend bytes [ expr $threshold >> 8 ]
-
-  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(none) ]
-
-  if { $rv != -1 } {
-    set sem(overload)         $threshold
-    set sem(overload_turnoff) $turnoff
-    set sem(overload_alarm)   $alarm
-
-    log "INFO:\tOverload successfully set"
-    return 0
-
-  } else {
-
-    log "ERROR:\tSet overload failed"
-    return -1
-
-  }
-
-}
-
-
-
-
-proc parse_overload { bytes } {
-
-  global sem
-  global REQ_COMMAND
-  global NOTIFIED
-
-  if { [ lindex $bytes 0 ] != $REQ_COMMAND(overload) && [ llength $bytes ] != 4 } {
-    return 0
-  }
-
-  set sem(overload)         [ expr [ lindex $bytes 2 ] + [ lindex $bytes 3 ] * 256 ]
-  set sem(overload_turnoff) [ expr ( [ lindex $bytes 1 ] & 128 ) >> 7 ]
-  set sem(overload_alarm)   [ expr ( [ lindex $bytes 1 ] & 64 ) >> 6 ]
-
-  log [ print_overload ]
-
-  return $NOTIFIED(overload)
 
 }
 
@@ -1174,6 +1171,46 @@ proc convert_measurement {n n100 f} {
 
 
 
+proc print_measurement {} {
+
+  global sem
+
+  if { [ info exists sem(latest_voltage) ] == 0 } {
+    return ""
+  }
+
+  append out "\tMeasurement:\n"
+  append out "\t  Power:          [ expr $sem(power) == 1 ? "on" : "off" ]\n"
+  append out "\t  Countdown:      [ expr $sem(countdown) == 1 ? "on" : "off" ]\n"
+  append out "\t  Voltage:        $sem(latest_voltage) V\n"
+  append out "\t  Ampere:         $sem(latest_ampere) A\n"
+  append out "\t  Watts:          $sem(latest_watts) W\n"
+  append out "\t  Frequency:      $sem(latest_frequency) Hz\n"
+  append out "\t  Power factor:   $sem(latest_factor)\n"
+  append out "\n"
+
+  return $out
+
+}
+
+
+
+
+proc print_measurement_as_csv {} {
+
+  global sem
+
+  append out [ current_datetime_str ]
+  append out ";$sem(power);$sem(countdown);$sem(latest_voltage);$sem(latest_ampere)"
+  append out ";$sem(latest_watts);$sem(latest_frequency);$sem(latest_factor)"
+
+  return $out
+
+}
+
+
+
+
 proc req_overload { } {
 
   global HANDLE
@@ -1183,7 +1220,7 @@ proc req_overload { } {
 
   set bytes {}
 
-  log "INFO:\tRequest overload"
+  log "INFO:\tRequest overload settings"
 
   # Byte 1: Overload command
   lappend bytes $REQ_COMMAND(overload)
@@ -1191,12 +1228,12 @@ proc req_overload { } {
   set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(overload) ]
   if { [ expr $rv & $NOTIFIED(overload) ] == $NOTIFIED(overload) } {
 
-    log "INFO:\tOverload successfully requested"
+    log "INFO:\tOverload settings successfully requested"
     return 0
 
   } else {
 
-    log "ERROR:\tReceiving overload failed"
+    log "ERROR:\tReceiving overload settings failed"
     return -1
 
   }
@@ -1206,88 +1243,91 @@ proc req_overload { } {
 
 
 
-proc req_subscribe_notification { handle s } {
+proc parse_overload { bytes } {
 
+  global sem
+  global REQ_COMMAND
   global NOTIFIED
+
+  if { [ lindex $bytes 0 ] != $REQ_COMMAND(overload) && [ llength $bytes ] != 4 } {
+    return 0
+  }
+
+  set sem(overload)         [ expr [ lindex $bytes 2 ] + [ lindex $bytes 3 ] * 256 ]
+  set sem(overload_turnoff) [ expr ( [ lindex $bytes 1 ] & 128 ) >> 7 ]
+  set sem(overload_alarm)   [ expr ( [ lindex $bytes 1 ] & 64 ) >> 6 ]
+
+  log [ print_overload ]
+
+  return $NOTIFIED(overload)
+
+}
+
+
+
+
+proc print_overload {} {
+
   global sem
 
-  set bytes {}
+  set out ""
 
-  log "INFO:\tSubscribe for notification handle 0x[ decimal_to_hex $handle ]"
-
-  # Byte 1: Subscribe/unsubscribe command
-  set s [ expr $s == 1 ? 1 : 0 ]
-  lappend bytes $s
-
-  # Byte 2: static 0
-  lappend bytes 0
-
-  set rv [ gatt_char_write_req $handle $bytes $NOTIFIED(none) ]
-
-  if { $rv != -1 } {
-
-    log "INFO:\tSuccessfully subscripted to notification handle 0x[ decimal_to_hex $handle ]"
-    return 0
-
-  } else {
-
-    log "ERROR:\tSubscription to notification handle 0x[ decimal_to_hex $handle ] failed"
-    return -1
-
+  if { $sem(overload) != -1 } {
+    append out "\tOverload:\n"
+    append out "\t  Threshold:     $sem(overload)W\n"
+    append out "\t  Turn off:      [ expr $sem(overload_turnoff) == 1 ? "yes" : "no" ]\n"
+    append out "\t  Alarm:         [ expr $sem(overload_alarm) == 1 ? "yes" : "no" ]\n"    
+    append out "\n"
   }
+
+  return $out
 
 }
 
 
 
 
-proc req_sync {} {
+proc set_overload { threshold turnoff alarm } {
 
   global HANDLE
   global NOTIFIED
   global REQ_COMMAND
   global sem
 
-  set datetime [ current_datetime ]
-
   set bytes {}
 
-  log "INFO:\tSync SEM"
+  log "INFO:\tSet overload"
 
-  # Byte 1: Sync command
-  lappend bytes $REQ_COMMAND(sync)
+  if { $threshold > 3699 } {
+    set threshold 3699
+  }
 
-  # Byte 2-3: Year
-  lappend bytes [ endian [ lindex $datetime 0 ] ]
+  # Byte 1: Overload command
+  lappend bytes $REQ_COMMAND(set_overload)
 
-  # Byte 4: Month
-  lappend bytes [ lindex $datetime 1 ]
+  # Byte 2: Bit 7: Alarm
+  #         Bit 8: Turnoff
+  lappend bytes [ expr $turnoff << 7 | $alarm << 6 ]
 
-  # Byte 5: Day in month
-  lappend bytes [ lindex $datetime 2 ]
+  # Byte 3: Threshold in watts
+  lappend bytes [ expr $threshold & 255 ]
 
-  # Byte 6: Hour of day
-  lappend bytes [ lindex $datetime 3 ]
-
-  # Byte 7: Minutes
-  lappend bytes [ lindex $datetime 4 ]
-
-  # Byte 8: Seconds
-  lappend bytes [ lindex $datetime 5 ]
-
-  # Byte 9-10: Secret key
-  lappend bytes [ endian $sem(secret) ]
+  # Byte 4: Threshold in watts
+  lappend bytes [ expr $threshold >> 8 ]
 
   set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(none) ]
 
   if { $rv != -1 } {
+    set sem(overload)         $threshold
+    set sem(overload_turnoff) $turnoff
+    set sem(overload_alarm)   $alarm
 
-    log "INFO:\tSEM synced successfully"
-    set sem(initialized) 1
+    log "INFO:\tOverload successfully set"
+    return 0
 
   } else {
 
-    log "ERROR:\tSynchronization of SEM failed"
+    log "ERROR:\tSet overload failed"
     return -1
 
   }
@@ -1297,36 +1337,125 @@ proc req_sync {} {
 
 
 
-proc init { level } {
+proc req_standby { } {
 
-  global INIT
   global HANDLE
+  global NOTIFIED
+  global REQ_COMMAND
   global sem
 
-  if { $sem(connected) != 1 } {
-    set sem(connected) [ gatt_connect $sem(mac) ]
-  }
+  set bytes {}
 
-  if { $sem(connected) == 1 } {
-    if { $sem(initialized) != 1 && $level & $INIT(auth) } {
-      req_sync
-      if { $sem(initialized) != 1 } {
-        puts "ERROR:\tInitialization failed"
-        exit -1
-      }
-    }
-    if { $sem(subscribe_cmd) != 1 && $level & $INIT(subscribe_cmd) } {
-      set sem(subscribe_cmd) [ req_subscribe_notification $HANDLE(subscribe_cmd) 1 ]
-    }
-    if { $sem(subscribe_measures) != 1 && $level & $INIT(subscribe_measures) } {
-      set sem(subscribe_measures) [ req_subscribe_notification $HANDLE(subscribe_measures) 1 ]
-    }
+  log "INFO:\tRequest standby settings"
+
+  # Byte 1: Standby command
+  lappend bytes $REQ_COMMAND(standby)
+
+  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(standby) ]
+  if { [ expr $rv & $NOTIFIED(standby) ] == $NOTIFIED(standby) } {
+
+    log "INFO:\tStandby settings successfully requested"
+    return 0
+
   } else {
-    puts "ERROR:\tConnection failed"
-    exit -1
+
+    log "ERROR:\tReceiving standby settings failed"
+    return -1
+
   }
 
-  return $sem(connected)
+}
+
+
+
+
+proc parse_standby { bytes } {
+
+  global sem
+  global REQ_COMMAND
+  global NOTIFIED
+
+  if { [ lindex $bytes 0 ] != $REQ_COMMAND(standby) && [ llength $bytes ] != 4 } {
+    return 0
+  }
+
+  set sem(standby)         [ expr ( [ lindex $bytes 2 ] + [ lindex $bytes 3 ] * 256 ) / 1000.0 ]
+  set sem(standby_active)  [ expr ( [ lindex $bytes 1 ] & 128 ) >> 7 ]
+
+  log [ print_standby ]
+
+  return $NOTIFIED(standby)
+
+}
+
+
+
+
+proc print_standby {} {
+
+  global sem
+
+  set out ""
+
+  if { $sem(standby) != -1 } {
+    append out "\tStandby:\n"
+    append out "\t  Threshold:     $sem(standby)W\n"
+    append out "\t  Active:        [ expr $sem(standby_active) == 1 ? "yes" : "no" ]\n"
+    append out "\n"
+  }
+
+  return $out
+
+}
+
+
+
+
+proc set_standby { threshold active } {
+
+  global HANDLE
+  global NOTIFIED
+  global REQ_COMMAND
+  global sem
+
+  set bytes {}
+
+  log "INFO:\tSet standby"
+
+  # Byte 1: Standby command
+  lappend bytes $REQ_COMMAND(set_standby)
+
+  # Byte 2: Bit 8: Turnoff
+  lappend bytes [ expr $active << 7 ]
+
+  # Range of threshold is 0 - 9.999 Watts
+  if { $threshold > 9.999 } {
+    set threshold 9999
+  } else {
+    set threshold [ expr int($threshold * 1000) ]
+  }
+
+  # Byte 3: Threshold in watts
+  lappend bytes [ expr $threshold & 255 ]
+
+  # Byte 4: Threshold in watts
+  lappend bytes [ expr $threshold >> 8 ]
+
+  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(none) ]
+
+  if { $rv != -1 } {
+    set sem(standby)         $threshold
+    set sem(standby_active)  $active
+
+    log "INFO:\tStandby successfully set"
+    return 0
+
+  } else {
+
+    log "ERROR:\tSet standby failed"
+    return -1
+
+  }
 
 }
 
@@ -1522,7 +1651,29 @@ proc do_command { command } {
 
       }
 
-    }    
+    }
+    ^standby.*$ {
+
+      if { [ llength $command ] == 1 } {
+
+        init [ expr $INIT(auth) | $INIT(subscribe_cmd) ]
+        req_standby
+
+      } elseif { [ llength $command ] == 2 && [ lindex $command 1 ] == "off" } {
+
+        init $INIT(auth)
+        set_standby 0 0
+
+      } else {
+
+        check_command $command 1 "standby" {^standby [0-9](.[0-9]{1,3})*$}
+        
+        init $INIT(auth)
+        set_standby [ lindex $command 1 ] 1
+
+      }
+
+    }  
     ^sleep.*$ {
 
       check_command $command 1 "sleep" {^sleep [0-9]+$}
@@ -1539,6 +1690,11 @@ proc do_command { command } {
       set verbose 1
 
     }
+    ^device^ {
+
+
+      
+    }
     ^debug$ {
 
       log_user 1
@@ -1550,6 +1706,40 @@ proc do_command { command } {
 
     }
   }
+}
+
+
+
+
+# logs output to stdout
+proc log { l } {
+
+  global verbose
+
+  if { $verbose != 0 } {
+
+    puts $l
+
+  }
+
+}
+
+
+
+
+proc check_command {argv req command reg} {
+
+  global HELP
+
+  set check [ regexp $reg [ concat $argv ] ]
+
+  if { [ llength $argv ] <= $req || $check == 0 } {
+    puts $HELP(usage)
+    puts $HELP($command)
+    puts ""
+    exit 1
+  }
+
 }
 
 

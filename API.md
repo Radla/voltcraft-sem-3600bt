@@ -351,6 +351,13 @@ handle: 0x0028   value: 57 69 74 74 65 63 68 20 43 6f 6d 70 61 6e 79 20 4c 74 64
 => Wittech Company Ltd
 ```
 
+```
+gatttool -b D0:39:72:BB:AE:EC --char-read -a 0x15
+Characteristic value/descriptor: 23 62 82 03 67 84 00 04 28 04 92 89 05 00 24 00 00 00 00
+                                 23 52 57 00 00 00 00 00 00 10 00 00 04 99 87 00 00 00 00
+                                 V  V  V  A  A  A  W  W  W  LF LF LF  f ff ff
+```
+see https://wiki.volkszaehler.org/hardware/channels/meters/power/wittech_witenergy_e100
 ## ???
 
 ```
