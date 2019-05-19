@@ -52,6 +52,8 @@ set REQ_COMMAND(switch)        4
 set REQ_COMMAND(countdown)     6
 set REQ_COMMAND(set_scheduler) 12
 set REQ_COMMAND(scheduler)     14
+set REQ_COMMAND(set_overload)  21
+set REQ_COMMAND(overload)      22
 
 set NOTIFY(none)               -1
 set NOTIFY(measurement)        18
@@ -70,6 +72,7 @@ set NOTIFIED(none)             0
 set NOTIFIED(measurement)      1
 set NOTIFIED(scheduler)        2
 set NOTIFIED(countdown)        4
+set NOTIFIED(overload)         8
 
 array set aliases              {}
 
@@ -80,6 +83,7 @@ set sem(connected)             -1
 set sem(initialized)           -1
 set sem(power)                 -1
 set sem(countdown)             -1
+set sem(overload)              -1
 set sem(subscribe_cmd)         -1
 set sem(subscribe_measures)    -1
 
@@ -126,11 +130,29 @@ set HELP(scheduler) "\
 set HELP(countdown) "\
   -countdown                         - query status of countdown\n\
 \n\
-\ -countdown <on|off> <hh:mm|+mm>\n\
+  -countdown <on|off> <hh:mm|+mm>    - set countdown action and runtime\n\
 \                                     on|off    - action of countdown\n\
 \                                     hh:mm|+mm - runtime of countdown\n\
 \n\
   -countdown <reset>                 - reset countdown"
+
+set HELP(overload) "\
+  -overload                          - query overload settings\n\
+\n\
+  -overload <watts> <off> <alarm>    - set overload with high-water-mark and actions\n\
+\                                     watts - high-water-mark, max. 3000, e.g. 3000 for 3000W\n\
+\                                     off   - (optional) turn socket off if overloaded\n\
+\                                     alarm - (optional) alarm if overloaded\n\
+\n\
+  -overload off                      - turn overload off"
+
+set HELP(standby) "\
+  -standby                           - query standby settings\n\
+\n\
+  -standby <watts>                   - set auto-power off if consumption is below water-mark\n\
+\                                     watts - low-water-mark, max. 30.00, e.g. 5.0 for 5.0W\n\
+\n\
+  -standby off                       - turn standby mode off"
 
 set HELP(print) "\
   -print                             - print gathered information"
@@ -195,6 +217,8 @@ proc help { argv } {
     puts ""
     puts "$HELP(countdown)"
     puts ""
+    puts "$HELP(overload)"
+    puts ""
     puts "$HELP(sleep)"
     puts ""
     puts "$HELP(debug)"
@@ -212,7 +236,7 @@ proc check_command {argv req command reg} {
 
   global HELP
 
-  set check [regexp $reg [concat $argv]]
+  set check [ regexp $reg [ concat $argv ] ]
 
   if { [ llength $argv ] <= $req || $check == 0 } {
     puts $HELP(usage)
@@ -498,6 +522,7 @@ proc print_sem {} {
     append out [ print_scheduler $i ]
   }
   append out [ print_countdown ]
+  append out [ print_overload ]
   puts $out
 
 }
@@ -578,6 +603,27 @@ proc print_countdown {} {
     append out "\t  Action:         [ expr $sem(countdown_action) == 1 ? "on" : "off" ]\n"
     append out "\t  Remaining:      $sem(countdown_runtime)\n"
     append out "\t  ETA:            [ calc_time [ current_time_str ] [ time_in_minutes $sem(countdown_runtime) ] ]\n"
+    append out "\n"
+  }
+
+  return $out
+
+}
+
+
+
+
+proc print_overload {} {
+
+  global sem
+
+  set out ""
+
+  if { $sem(overload) != -1 } {
+    append out "\tOverload:\n"
+    append out "\t  Threshold:     $sem(overload)W\n"
+    append out "\t  Turn off:      [ expr $sem(overload_turnoff) == 1 ? "yes" : "no" ]\n"
+    append out "\t  Alarm:         [ expr $sem(overload_alarm) == 1 ? "yes" : "no" ]\n"    
     append out "\n"
   }
 
@@ -688,7 +734,8 @@ proc gatt_grab_notification_handle { notification_level } {
     # convert notification to byte list
     set bytes {}
     foreach s $buffer {
-      if { $s == "value:" } {
+      set check [ regexp {^[0-9A-Fa-f]+} $s ]
+      if { $check == 0 } {
         continue
       }
       lappend bytes [ hex_to_decimal $s ]
@@ -700,21 +747,30 @@ proc gatt_grab_notification_handle { notification_level } {
     # do the right thing with this specific notification
     set handle [ lindex $bytes 0 ]
     set bytes [ lreplace $bytes 0 0 ]
+    log "INFO: Handle $handle, Bytes $bytes"
+
     if { $handle == $NOTIFY(measurement) && [ llength $bytes ] == 16 } {
 
       # measurement
       set notified [ expr $notified | [ parse_measurement $bytes ] ]
 
-    } elseif { $handle == $NOTIFY(cmd) && [ lindex $bytes 0 ] == $REQ_COMMAND(scheduler) && [ llength $bytes ] == 8 } {
+    } elseif { $handle == $NOTIFY(cmd) && [ llength $bytes ] == 8 && [ lindex $bytes 0 ] == $REQ_COMMAND(scheduler) } {
 
       # scheduler notification
       set notified [ expr $notified | [ parse_scheduler $bytes ] ]
 
-    } elseif { $handle == $NOTIFY(cmd) && [ lindex $bytes 0 ] == $REQ_COMMAND(countdown) && [ llength $bytes ] == 4 } {
+    } elseif { $handle == $NOTIFY(cmd) && [ llength $bytes ] == 4 && [ lindex $bytes 0 ] == $REQ_COMMAND(countdown) } {
 
       # countdown notification
       set notified [ expr $notified | [ parse_countdown $bytes ] ]
 
+    } elseif { $handle == $NOTIFY(cmd) && [ llength $bytes ] == 4 && [ lindex $bytes 0 ] == $REQ_COMMAND(overload) } {
+
+      # overload notification
+      set notified [ expr $notified | [ parse_overload $bytes ] ]
+
+    } else {
+      log "WARNING:\tUnknown notification received, 0x$buffer"
     }
 
   }
@@ -963,6 +1019,79 @@ proc parse_countdown { bytes } {
 
 
 
+proc set_overload { threshold turnoff alarm } {
+
+  global HANDLE
+  global NOTIFIED
+  global REQ_COMMAND
+  global sem
+
+  set bytes {}
+
+  log "INFO:\tSet overload"
+
+  if { $threshold > 3000 } {
+    set threshold 3000
+  }
+
+  # Byte 1: Overload command
+  lappend bytes $REQ_COMMAND(set_overload)
+
+  # Byte 2: Bit 7: Alarm
+  #         Bit 8: Turnoff
+  lappend bytes [ expr $turnoff << 7 | $alarm << 6 ]
+
+  # Byte 3: Threshold in watts
+  lappend bytes [ expr $threshold & 255 ]
+
+  # Byte 4: Threshold in watts
+  lappend bytes [ expr $threshold >> 8 ]
+
+  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(none) ]
+
+  if { $rv != -1 } {
+    set sem(overload)         $threshold
+    set sem(overload_turnoff) $turnoff
+    set sem(overload_alarm)   $alarm
+
+    log "INFO:\tOverload successfully set"
+    return 0
+
+  } else {
+
+    log "ERROR:\tSet overload failed"
+    return -1
+
+  }
+
+}
+
+
+
+
+proc parse_overload { bytes } {
+
+  global sem
+  global REQ_COMMAND
+  global NOTIFIED
+
+  if { [ lindex $bytes 0 ] != $REQ_COMMAND(overload) && [ llength $bytes ] != 4 } {
+    return 0
+  }
+
+  set sem(overload)         [ expr [ lindex $bytes 2 ] + [ lindex $bytes 3 ] * 256 ]
+  set sem(overload_turnoff) [ expr ( [ lindex $bytes 1 ] & 128 ) >> 7 ]
+  set sem(overload_alarm)   [ expr ( [ lindex $bytes 1 ] & 64 ) >> 6 ]
+
+  log [ print_overload ]
+
+  return $NOTIFIED(overload)
+
+}
+
+
+
+
 proc capture_measurement {} {
 
   global NOTIFIED
@@ -1021,6 +1150,8 @@ proc parse_measurement { bytes } {
   # Frequency
   set sem(latest_frequency) [ convert_measurement [ lindex $n 15 ] [ lindex $n 14 ] [ lindex $n 13 ] ]
 
+  log [ print_measurement ]
+
   return $NOTIFIED(measurement)
 
 }
@@ -1043,21 +1174,29 @@ proc convert_measurement {n n100 f} {
 
 
 
-proc capture_countdown {} {
+proc req_overload { } {
 
+  global HANDLE
   global NOTIFIED
+  global REQ_COMMAND
   global sem
 
-  set rv [ gatt_grab_notification_handle $NOTIFIED(countdown) ]
+  set bytes {}
 
-  if { [ expr $rv & $NOTIFIED(countdown) ] == $NOTIFIED(countdown) } {
+  log "INFO:\tRequest overload"
 
-    log "INFO:\tCountdown successfully captured"
+  # Byte 1: Overload command
+  lappend bytes $REQ_COMMAND(overload)
+
+  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(overload) ]
+  if { [ expr $rv & $NOTIFIED(overload) ] == $NOTIFIED(overload) } {
+
+    log "INFO:\tOverload successfully requested"
     return 0
 
   } else {
 
-    log "ERROR:\tCapturing countdown failed"
+    log "ERROR:\tReceiving overload failed"
     return -1
 
   }
@@ -1351,6 +1490,39 @@ proc do_command { command } {
       }
 
     }
+    ^overload.*$ {
+
+      if { [ llength $command ] == 1 } {
+
+        init [ expr $INIT(auth) | $INIT(subscribe_cmd) ]
+        req_overload
+
+      } elseif { [ llength $command ] == 2 && [ lindex $command 1 ] == "off" } {
+
+        init $INIT(auth)
+        set_overload 0 0 0
+
+      } elseif { [ llength $command ] == 3 } {
+
+        check_command $command 2 "overload" {^overload [1-3]?[0-9]{1,3} (off|alarm)$}
+
+        init $INIT(auth)
+        if { [ lindex $command 2 ] == "off" } {
+          set_overload [ lindex $command 1 ] 1 0
+        } else {
+          set_overload [ lindex $command 1 ] 0 1
+        }
+
+      } else {
+
+        check_command $command 3 "overload" {^overload [1-3]?[0-9]{1,3} off alarm$}
+        
+        init $INIT(auth)
+        set_overload [ lindex $command 1 ] 1 1
+
+      }
+
+    }    
     ^sleep.*$ {
 
       check_command $command 1 "sleep" {^sleep [0-9]+$}
