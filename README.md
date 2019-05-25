@@ -523,9 +523,10 @@ Each record has the following information:
 1. Column: Timestamp
 1. Column: Power state, 1 = on, 0 = off
 1. Column: Countdown state, 1 = running, 0 = off
-1. Column: Volt
-1. Column: Ampere
-1. Column: Watts
+1. Column: Volt (V)
+1. Column: Ampere (A)
+1. Column: Watts (W)
+1. Column: Frequency (Hz)
 1. Column: Power factor (whatever this means)
 
 ### Request recorded data
