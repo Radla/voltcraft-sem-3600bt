@@ -54,8 +54,16 @@ set REQ_COMMAND(set_standby)   19
 set REQ_COMMAND(standby)       20
 set REQ_COMMAND(set_overload)  21
 set REQ_COMMAND(overload)      22
+set REQ_COMMAND(consumption)   23
 set REQ_COMMAND(uptime)        24
-set REQ_COMMAND(reset_uptime)  25
+set REQ_COMMAND(reset)         25
+
+set REQ_HND(device_name)      3
+set REQ_HND(device_serial)    32
+set REQ_HND(device_firmware)  34
+set REQ_HND(device_hardware)  36
+set REQ_HND(device_software)  38
+set REQ_HND(device_vendor)    40
 
 set NOTIFY(none)               -1
 set NOTIFY(measurement)        18
@@ -66,9 +74,11 @@ set INIT(subscribe_cmd)        2
 set INIT(subscribe_measures)   4
 set INIT(query_standby)        8
 set INIT(query_overload)       16
-set INIT(query_schedulers)     64
-set INIT(query_runtime)        128
-set INIT(device_info)          256
+set INIT(query_schedulers)     32
+set INIT(query_countdown)      64
+set INIT(query_uptime)         128
+set INIT(query_consumption)    256
+set INIT(device_info)          512
 
 set NOTIFIED(none)             0
 set NOTIFIED(measurement)      1
@@ -77,19 +87,30 @@ set NOTIFIED(countdown)        4
 set NOTIFIED(overload)         8
 set NOTIFIED(standby)          16
 set NOTIFIED(uptime)           32
+set NOTIFIED(consumption)      64
 
 array set aliases              {}
 
 set sem(mac)                   ""
 set sem(alias)                 ""
+set sem(device_name)           ""
+set sem(device_serial)         ""
+set sem(device_firmware)       ""
+set sem(device_hardware)       ""
+set sem(device_software)       ""
+set sem(device_vendor)         ""
+
 set sem(secret)                -1
 set sem(connected)             -1
 set sem(initialized)           -1
+set sem(device)                -1
 set sem(power)                 -1
+set sem(schedulers)            -1
 set sem(countdown)             -1
 set sem(overload)              -1
 set sem(standby)               -1
 set sem(uptime)                -1
+set sem(consumption)           -1
 set sem(subscribe_cmd)         -1
 set sem(subscribe_measures)    -1
 
@@ -117,8 +138,13 @@ set HELP(watch) "\
   -watch \[<s>\]                       - watch measurements, optional duration in seconds (use 0 for single), otherwise forever"
 
 set HELP(uptime) "\
-  -uptime                            - query power-on uptime\n\
-  -uptime reset                      - reset power-on uptime"
+  -uptime                            - query power-on uptime"
+
+set HELP(consumption) "\
+  -consumption                       - query power-on consumption"
+
+set HELP(reset) "\
+  -reset                             - reset all recorded data"
 
 set HELP(scheduler) "\
   -scheduler <n> <on|off> <hh:mm|+mm> <on|off> <hh:mm|+mm> \[<smtwtfs>\]\n\
@@ -175,11 +201,17 @@ set HELP(standby) "\
 set HELP(print) "\
   -print                             - print gathered information"
 
+set HELP(dump) "\
+  -dump                              - request all information from device"
+
 set HELP(sleep) "\
   -sleep <n>                         - pause processing for n seconds"
 
 set HELP(verbose) "\
   -verbose                           - print information about processing"
+
+set HELP(device) "\
+  -device                            - request device meta data"
 
 set HELP(debug) "\
   -debug                             - print actions in gatttool"
@@ -223,12 +255,16 @@ proc help { argv } {
     puts "$HELP(measure)"
     puts "$HELP(watch)"
     puts "$HELP(uptime)"
+    puts "$HELP(consumption)"
+    puts "$HELP(reset)"
     puts "\nOther commands:\n"
     puts "$HELP(print)"
     puts "$HELP(sync)"
+    puts "$HELP(dump)"
     puts "$HELP(sleep)"
     puts "$HELP(verbose)"
     puts "$HELP(debug)"
+    puts "$HELP(device)"
     puts "$HELP(help)"
     puts ""
     exit 1
@@ -245,17 +281,17 @@ proc print_sem {} {
 
   set out "\n"
   append out "\tMac:              $sem(mac)\n"
-  # append out "\tSecret key (hex): 0x[decimal_to_hex $sem(secret) ]\n"
-
+  append out [ print_device ]
   append out "\tInitialized:      [ expr $sem(initialized) == 1 ? "yes" : "no" ]\n"
   append out "\tConnected:        [ expr $sem(connected) == 1 ? "yes" : "no" ]\n"
   append out "\tAlias:            $sem(alias)\n"
   append out "\n"
   append out [ print_measurement ]
+  append out [ print_uptime ]
+  append out [ print_consumption ]
   for { set i 0 } { $i < 6 } { incr i } {
     append out [ print_scheduler $i ]
   }
-  append out [ print_uptime ]  
   append out [ print_countdown ]
   append out [ print_overload ]
   append out [ print_standby ]
@@ -496,14 +532,20 @@ proc endian { v } {
 
 
 
-proc ascii_to_hex { s } {
+proc ascii { bytes } {
 
-  set s [ string range $s 0 15 ]
-  set hex ""
-  foreach x [ split $s "" ] {
-    append hex [ format %2.2X [ scan $x %c ] ]
+  set s ""
+
+  foreach b $bytes {
+
+    if { $b == 0 } {
+      break
+    }
+
+    append s [ format %c $b ]
   }
-  return $hex
+
+  return $s
 
 }
 
@@ -552,12 +594,43 @@ proc init { level } {
         exit -1
       }
     }
-    if { $sem(subscribe_cmd) != 1 && $level & $INIT(subscribe_cmd) } {
+    if { $sem(device) == -1 && $level & $INIT(device_info) } {
+      set sem(device) [ req_device ]
+    }
+
+    if { $sem(subscribe_cmd) == -1 && $level & $INIT(subscribe_cmd) } {
       set sem(subscribe_cmd) [ req_subscribe_notification $HANDLE(subscribe_cmd) 1 ]
     }
-    if { $sem(subscribe_measures) != 1 && $level & $INIT(subscribe_measures) } {
-      set sem(subscribe_measures) [ req_subscribe_notification $HANDLE(subscribe_measures) 1 ]
+    if { $sem(standby) == -1 && $level & $INIT(query_standby) } {
+      set sem(standby) [ req_standby ]
     }
+    if { $sem(overload) == -1 && $level & $INIT(query_overload) } {
+      set sem(overload) [ req_overload ]
+    }
+    if { $sem(schedulers) == -1 && $level & $INIT(query_schedulers) } {
+      for { set i 0 } { $i < 6 } { incr i } {
+        req_scheduler $i
+      }
+      set sem(schedulers) 1
+    }
+    if { $sem(uptime) == -1 && $level & $INIT(query_uptime) } {
+      set sem(uptime) [ req_overload ]
+    }
+    if { $sem(consumption) == -1 && $level & $INIT(query_consumption) } {
+      set sem(consumption) [ req_consumption ]
+    }
+    if { $sem(subscribe_measures) == -1 && $level & $INIT(subscribe_measures) } {
+      set sem(subscribe_measures) [ req_subscribe_notification $HANDLE(subscribe_measures) 1 ]
+      capture_measurement
+    }
+    if { $sem(countdown) == -1 && $level & $INIT(query_countdown) } {
+      capture_measurement
+
+      if { $sem(countdown) == 1 } {
+        set sem(countdown) [ capture_countdown ]
+      }
+    }
+
   } else {
     puts "ERROR:\tConnection failed"
     exit -1
@@ -598,6 +671,47 @@ proc gatt_disconnect {} {
   log "INFO:\tDisconnect from $sem(mac)"
 
   send "disconnect\r"
+
+}
+
+
+
+
+proc read_handle { hnd } {
+
+  global DELAY
+
+  set hnd_hex [ decimal_to_hex $hnd ]
+
+  log "INFO:\t>>>\tchar-read-hnd $hnd_hex"
+
+  send "char-read-hnd $hnd_hex\r"
+
+  expect {
+    -indices -re "Characteristic value/descriptor: (\[0-9a-f\ \]*)\r" {
+      after $DELAY
+      set buffer $expect_out(1,string)
+      log "INFO:\t<<<\tCharacteristic value/descriptor = $buffer"
+    }
+    timeout {
+      log "WARN:\tTimeout. Characteristic value/descriptor not received"
+    }
+  }
+
+  # convert notification to byte list
+  set bytes {}
+  foreach s $buffer {
+    set check [ regexp {^[0-9A-Fa-f]+} $s ]
+    if { $check == 0 } {
+      continue
+    }
+    lappend bytes [ hex_to_decimal $s ]
+  }
+  if { [ llength $bytes ] == 0 } {
+    continue
+  }
+
+  return $bytes
 
 }
 
@@ -715,8 +829,15 @@ proc gatt_grab_notification_handle { notification_level } {
       # power-on uptime notification
       set notified [ expr $notified | [ parse_uptime $bytes ] ]
 
+    } elseif { $handle == $NOTIFY(cmd) && [ llength $bytes ] == 17 && [ lindex $bytes 0 ] == $REQ_COMMAND(consumption) } {
+
+      # power-on consumption notification
+      set notified [ expr $notified | [ parse_consumption $bytes ] ]
+
     } else {
+
       log "WARNING:\tUnknown notification received, 0x$buffer"
+
     }
 
   }
@@ -1650,7 +1771,7 @@ proc print_uptime {} {
 
 
 
-proc reset_uptime {} {
+proc reset_data {} {
 
   global HANDLE
   global NOTIFIED
@@ -1662,7 +1783,7 @@ proc reset_uptime {} {
   log "INFO:\tReset power-on uptime"
 
   # Byte 1: Uptime command
-  lappend bytes $REQ_COMMAND(reset_uptime)
+  lappend bytes $REQ_COMMAND(reset)
 
   set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(none) ]
 
@@ -1678,6 +1799,122 @@ proc reset_uptime {} {
     return -1
 
   }
+
+}
+
+
+
+
+proc req_consumption { } {
+
+  global HANDLE
+  global NOTIFIED
+  global REQ_COMMAND
+  global sem
+
+  set bytes {}
+
+  log "INFO:\tRequest total power-on consumption"
+
+  # Byte 1: Consumption command
+  lappend bytes $REQ_COMMAND(consumption)
+
+  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(consumption) ]
+  if { [ expr $rv & $NOTIFIED(consumption) ] == $NOTIFIED(consumption) } {
+
+    log "INFO:\tTotal power-on consumption successfully requested"
+    return 0
+
+  } else {
+
+    log "ERROR:\tReceiving total power-on consumption failed"
+    return -1
+
+  }
+
+}
+
+
+
+
+proc parse_consumption { bytes } {
+
+  global sem
+  global REQ_COMMAND
+  global NOTIFIED
+
+  if { [ lindex $bytes 0 ] != $REQ_COMMAND(consumption) && [ llength $bytes ] != 17 } {
+    return 0
+  }
+
+  set sem(consumption) [ expr ( [ lindex $bytes 13 ] + ( [ lindex $bytes 14 ] << 8 ) + ( [ lindex $bytes 15 ] << 15 ) + ( [ lindex $bytes 16 ] << 24 ) ) ]
+
+  log [ print_consumption ]
+
+  return $NOTIFIED(consumption)
+
+}
+
+
+
+
+proc print_consumption {} {
+
+  global sem
+
+  set out ""
+
+  if { $sem(consumption) != -1 } {
+    append out "\tPower-on consumption:  [ expr $sem(consumption) / 1000.0 ] kWh\n"
+    append out "\n"
+  }
+
+  return $out
+
+}
+
+
+
+
+proc req_device {} {
+
+  global REQ_HND
+  global sem
+
+  set sem(device_name)     [ ascii [ read_handle $REQ_HND(device_name) ] ]
+  set sem(device_serial)   [ ascii [ read_handle $REQ_HND(device_serial) ] ]
+  set sem(device_firmware) [ ascii [ read_handle $REQ_HND(device_firmware) ] ]
+  set sem(device_hardware) [ ascii [ read_handle $REQ_HND(device_hardware) ] ]
+  set sem(device_software) [ ascii [ read_handle $REQ_HND(device_software) ] ]
+  set sem(device_vendor)   [ ascii [ read_handle $REQ_HND(device_vendor) ] ]
+
+  set sem(device) 0
+
+  return 0
+
+}
+
+
+
+
+proc print_device {} {
+
+  global sem
+
+  set out ""
+
+  if { $sem(device) != -1 } {
+    append out "\tDevice name:      $sem(device_name)\n"
+    append out "\tDevice vendor:    $sem(device_vendor)\n"
+    append out "\tDevice serial:    $sem(device_serial)\n"
+    append out "\tDevice firmware:  $sem(device_firmware)\n"
+    append out "\tDevice hardware:  $sem(device_hardware)\n"
+    append out "\tDevice software:  $sem(device_software)\n"
+    append out "\tDevice secret:    0x[decimal_to_hex $sem(secret) ]\n"
+    append out "\n"
+  }
+
+  return $out
 
 }
 
@@ -1850,7 +2087,7 @@ proc do_command { command } {
           # countdown given in ETA
           set now [ time_in_minutes [ current_time_str ] ]
           set target [ time_in_minutes [ lindex $command 2 ] ]
-          set runtime [ calc_time "00:00" [ expr (1440 + $target - $now) % 1440 ] ] 
+          set runtime [ calc_time "00:00" [ expr (1440 + $target - $now) % 1440 ] ]
 
         }
 
@@ -1927,15 +2164,32 @@ proc do_command { command } {
 
     }
     ^uptime$ {
-      
+
       init [ expr $INIT(auth) | $INIT(subscribe_cmd) ]
       req_uptime
 
     }
-    ^uptime\ reset$ {
+    ^consumption$ {
+
+      init [ expr $INIT(auth) | $INIT(subscribe_cmd) ]
+      req_consumption
+
+    }
+    ^total$ {
+
+      init [ expr $INIT(auth) | $INIT(subscribe_cmd) ]
+      req_consumption
+
+    }
+    ^dump$ {
+
+      init [ expr $INIT(auth) | $INIT(subscribe_cmd) | $INIT(query_standby) | $INIT(query_overload) | $INIT(query_schedulers) | $INIT(query_uptime) | $INIT(query_consumption) | $INIT(device_info) | $INIT(subscribe_measures) | $INIT(query_countdown) ]
+
+    }
+    ^reset$ {
 
       init [ expr $INIT(auth) ]
-      reset_uptime
+      reset_data
 
     }
     ^sleep.*$ {
@@ -1954,7 +2208,10 @@ proc do_command { command } {
       set verbose 1
 
     }
-    ^device^ {
+    ^device$ {
+
+      init [ expr $INIT(auth) ]
+      req_device
 
     }
     ^debug$ {

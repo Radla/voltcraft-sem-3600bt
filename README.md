@@ -572,6 +572,22 @@ Actually time is synchronized each time you run a command. If you just want to s
 $ ./vc-sem.exp Lamp -sync
 ```
 
+### Device information
+
+In order to get general device information you can request it by using the _device_ command:
+```
+$ vc-sem La -device -print
+
+        Mac:              20:CD:39:1F:EC:DE
+        Device name:      WiT Power Meter
+        Device vendor:    Wittech Company Ltd.
+        Device serial:    SN: 000000
+        Device firmware:  F/W: V01.32
+        Device hardware:  H/W: V00.00
+        Device software:  S/W: V00.11
+        Device secret:    0x030c
+```
+
 ### Verbose
 
 If you want to get some information what's going on while the script is running, add the verbose command. 
@@ -631,4 +647,11 @@ Characteristic value was written successfully
 Notification handle = 0x0012 value: 02 03 23 82 01 00 00 01 00 00 01 10 00 02 49 98
 [20:CD:39:1F:EC:DE][LE]> char-write-req 18 0400
 Characteristic value was written successfully
+```
+
+### Dump
+
+The _dump_ command tries to gather all information from the device.
+```
+$ ./vc-sem.exp La -dump -print
 ```
