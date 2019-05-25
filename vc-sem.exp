@@ -54,6 +54,8 @@ set REQ_COMMAND(set_standby)   19
 set REQ_COMMAND(standby)       20
 set REQ_COMMAND(set_overload)  21
 set REQ_COMMAND(overload)      22
+set REQ_COMMAND(uptime)        24
+set REQ_COMMAND(reset_uptime)  25
 
 set NOTIFY(none)               -1
 set NOTIFY(measurement)        18
@@ -73,7 +75,8 @@ set NOTIFIED(measurement)      1
 set NOTIFIED(scheduler)        2
 set NOTIFIED(countdown)        4
 set NOTIFIED(overload)         8
-set NOTIFIED(standby)         16
+set NOTIFIED(standby)          16
+set NOTIFIED(uptime)           32
 
 array set aliases              {}
 
@@ -86,6 +89,7 @@ set sem(power)                 -1
 set sem(countdown)             -1
 set sem(overload)              -1
 set sem(standby)               -1
+set sem(uptime)                -1
 set sem(subscribe_cmd)         -1
 set sem(subscribe_measures)    -1
 
@@ -111,6 +115,10 @@ set HELP(measure) "\
 
 set HELP(watch) "\
   -watch \[<s>\]                       - watch measurements, optional duration in seconds (use 0 for single), otherwise forever"
+
+set HELP(uptime) "\
+  -uptime                            - query power-on uptime\n\
+  -uptime reset                      - reset power-on uptime"
 
 set HELP(scheduler) "\
   -scheduler <n> <on|off> <hh:mm|+mm> <on|off> <hh:mm|+mm> \[<smtwtfs>\]\n\
@@ -214,6 +222,7 @@ proc help { argv } {
     puts "\nMeasurement commands:\n"
     puts "$HELP(measure)"
     puts "$HELP(watch)"
+    puts "$HELP(uptime)"
     puts "\nOther commands:\n"
     puts "$HELP(print)"
     puts "$HELP(sync)"
@@ -246,6 +255,7 @@ proc print_sem {} {
   for { set i 0 } { $i < 6 } { incr i } {
     append out [ print_scheduler $i ]
   }
+  append out [ print_uptime ]  
   append out [ print_countdown ]
   append out [ print_overload ]
   append out [ print_standby ]
@@ -699,6 +709,11 @@ proc gatt_grab_notification_handle { notification_level } {
 
       # standby notification
       set notified [ expr $notified | [ parse_standby $bytes ] ]
+
+    } elseif { $handle == $NOTIFY(cmd) && [ llength $bytes ] == 4 && [ lindex $bytes 0 ] == $REQ_COMMAND(uptime) } {
+
+      # power-on uptime notification
+      set notified [ expr $notified | [ parse_uptime $bytes ] ]
 
     } else {
       log "WARNING:\tUnknown notification received, 0x$buffer"
@@ -1562,6 +1577,113 @@ proc set_standby { threshold active } {
 
 
 
+proc req_uptime { } {
+
+  global HANDLE
+  global NOTIFIED
+  global REQ_COMMAND
+  global sem
+
+  set bytes {}
+
+  log "INFO:\tRequest power-on uptime"
+
+  # Byte 1: Uptime command
+  lappend bytes $REQ_COMMAND(uptime)
+
+  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(uptime) ]
+  if { [ expr $rv & $NOTIFIED(uptime) ] == $NOTIFIED(uptime) } {
+
+    log "INFO:\tPower-on uptime successfully requested"
+    return 0
+
+  } else {
+
+    log "ERROR:\tReceiving power-on uptime failed"
+    return -1
+
+  }
+
+}
+
+
+
+
+proc parse_uptime { bytes } {
+
+  global sem
+  global REQ_COMMAND
+  global NOTIFIED
+
+  if { [ lindex $bytes 0 ] != $REQ_COMMAND(uptime) && [ llength $bytes ] != 4 } {
+    return 0
+  }
+
+  set sem(uptime) [ expr ( [ lindex $bytes 1 ] + ( [ lindex $bytes 2 ] << 8 ) + ( [ lindex $bytes 3 ] << 16 ) ) ]
+
+  log [ print_uptime ]
+
+  return $NOTIFIED(uptime)
+
+}
+
+
+
+
+proc print_uptime {} {
+
+  global sem
+
+  set out ""
+  set days [ expr $sem(uptime) / 1440 ]
+  set time [ calc_time "00:00" [ expr $sem(uptime) % 1440 ] ]
+
+  if { $sem(uptime) != -1 } {
+    append out "\tPower-on uptime:  $days days, $time\n"
+    append out "\n"
+  }
+
+  return $out
+
+}
+
+
+
+
+proc reset_uptime {} {
+
+  global HANDLE
+  global NOTIFIED
+  global REQ_COMMAND
+  global sem
+
+  set bytes {}
+
+  log "INFO:\tReset power-on uptime"
+
+  # Byte 1: Uptime command
+  lappend bytes $REQ_COMMAND(reset_uptime)
+
+  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(none) ]
+
+  if { $rv != -1 } {
+    set sem(uptime) 0
+
+    log "INFO:\tPower-on uptime successfully reset"
+    return 0
+
+  } else {
+
+    log "ERROR:\tReset power-on uptime failed"
+    return -1
+
+  }
+
+}
+
+
+
+
 proc do_command { command } {
 
   global INIT
@@ -1802,6 +1924,18 @@ proc do_command { command } {
         }
 
       }
+
+    }
+    ^uptime$ {
+      
+      init [ expr $INIT(auth) | $INIT(subscribe_cmd) ]
+      req_uptime
+
+    }
+    ^uptime\ reset$ {
+
+      init [ expr $INIT(auth) ]
+      reset_uptime
 
     }
     ^sleep.*$ {

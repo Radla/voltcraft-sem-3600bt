@@ -51,7 +51,7 @@ There is no need to pair device.
 
 
 ### 4. Aliases
-For convenience reasons I recommend to use aliases. Instead of entering the bluetootg mac address each time you want to run the script, you can call the script by using meaningful names.
+For convenience reasons I recommend to use aliases. Instead of entering the bluetooth mac address each time you want to run the script, you can call the script by using meaningful names.
 
 The script tries to read a file called `.known_sems` which must be located in your home folder. It is a text file with two columns:
 
@@ -86,7 +86,7 @@ $ ./vc-sem.exp Lam -sync
 In order to get an overview of the full feature set enter the following:
 ```
 $ ./vc-sem.exp -help
-Usage: <mac/alias> -<command1> <parameters...> >-<command2>
+Usage: <mac/alias> -<command1> <parameters...> -<command2>
                                    <mac>: bluetooth mac address of bulb
                                    <alias>: you can use alias instead of mac address
                                             after you have run setup (see setup)
@@ -508,7 +508,7 @@ $ ./vc-sem.exp Lamp -measure -print
 
 ### Realtime monitoring
 
-The _watch_ captures the power data for a given period or infinitely. This monitors the power consumption for 5 seconds:
+The _watch_ command captures the power data for a given period or infinitely. This monitors the power consumption for 5 seconds:
 ```
 $ ./vc-sem.exp Lamp -watch 5
 2019-05-25 11:41:40;1;1;237.7;0.035;4.322;49.99;0.514
@@ -529,9 +529,38 @@ Each record has the following information:
 1. Column: Frequency (Hz)
 1. Column: Power factor (whatever this means)
 
+### Power-on uptime
+
+The smart energy meter records the uptime - the time when the socket is turned on.
+
+You can request this time by using the _uptime_ command:
+
+```
+$ vc-sem Ent -uptime -print
+
+        Mac:              D0:39:72:BB:AE:EC
+        Initialized:      yes
+        Connected:        yes
+        Alias:            Entertainment
+
+        Power-on uptime:  2 days, 20:38
+```
+
+If you want to reset this counter enter the following:
+```
+$ vc-sem Ent -uptime reset -print
+
+        Mac:              D0:39:72:BB:AE:EC
+        Initialized:      yes
+        Connected:        yes
+        Alias:            Entertainment
+
+        Power-on uptime:  0 days, 00:00
+```
+
 ### Request recorded data
 
-_TODO_
+
 
 ## More commands
 
