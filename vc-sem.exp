@@ -141,19 +141,11 @@ set HELP(countdown) "\
   -countdown                         - query status of countdown"
 
 set HELP(overload) "\
-<<<<<<< HEAD
-  -overload                          - query overload settings\n\
-\n\
-  -overload <watts> <off> <alarm>    - set overload with high-water-mark and actions\n\
-\                                     watts - high-water-mark, max. 3699, e.g. 3699 for 3699W\n\
-\                                     off   - (optional) turn socket off if overloaded\n\
-=======
   -overload <watts> <warn|off> <alarm>\n\
 \                                   - set overload with high-water-mark and actions\n\
 \                                     watts - high-water-mark, max. 3699, e.g. 3699 for 3699W\n\
 \                                     warn  - led blinks when overloaded\n\
 \                                     off   - turn socket off if overloaded\n\
->>>>>>> Refactoring, added functionality for standby
 \                                     alarm - (optional) alarm if overloaded\n\
 \n\
   -overload off                      - turn overload off\n\
@@ -215,13 +207,6 @@ proc help { argv } {
     puts "$HELP(scheduler)"
     puts "\nCountdown commands:\n"
     puts "$HELP(countdown)"
-<<<<<<< HEAD
-    puts ""
-    puts "$HELP(overload)"
-    puts ""
-    puts "$HELP(standby)"
-    puts ""
-=======
     puts "\nPower commands:\n"
     puts "$HELP(overload)\n"
     puts "$HELP(standby)"
@@ -231,7 +216,6 @@ proc help { argv } {
     puts "\nOther commands:\n"
     puts "$HELP(print)"
     puts "$HELP(sync)"
->>>>>>> Refactoring, added functionality for standby
     puts "$HELP(sleep)"
     puts "$HELP(verbose)"
     puts "$HELP(debug)"
@@ -788,8 +772,6 @@ proc req_switch { s } {
   # Byte 2: Turn on (1) / turn off (0)
   set s [ expr $s == 1 ? 1 : 0 ]
   lappend bytes $s
-<<<<<<< HEAD
-=======
 
   set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(none) ]
 
@@ -862,7 +844,6 @@ proc req_scheduler { i } {
 
   # Byte 2: id of scheduler
   lappend bytes $i
->>>>>>> Refactoring, added functionality for standby
 
   set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(none) ]
 
@@ -1340,55 +1321,6 @@ proc req_overload { } {
 
 
 proc parse_overload { bytes } {
-<<<<<<< HEAD
-
-  global sem
-  global REQ_COMMAND
-  global NOTIFIED
-
-  if { [ lindex $bytes 0 ] != $REQ_COMMAND(overload) && [ llength $bytes ] != 4 } {
-    return 0
-  }
-
-  set sem(overload)         [ expr [ lindex $bytes 2 ] + [ lindex $bytes 3 ] * 256 ]
-  set sem(overload_turnoff) [ expr ( [ lindex $bytes 1 ] & 128 ) >> 7 ]
-  set sem(overload_alarm)   [ expr ( [ lindex $bytes 1 ] & 64 ) >> 6 ]
-
-  log [ print_overload ]
-
-  return $NOTIFIED(overload)
-
-}
-
-
-
-
-proc print_overload {} {
-
-  global sem
-
-  set out ""
-
-  if { $sem(overload) != -1 } {
-    append out "\tOverload:\n"
-    append out "\t  Threshold:     $sem(overload)W\n"
-    append out "\t  Turn off:      [ expr $sem(overload_turnoff) == 1 ? "yes" : "no" ]\n"
-    append out "\t  Alarm:         [ expr $sem(overload_alarm) == 1 ? "yes" : "no" ]\n"    
-    append out "\n"
-  }
-
-  return $out
-
-}
-
-
-
-
-proc set_overload { threshold turnoff alarm } {
-
-  global HANDLE
-  global NOTIFIED
-=======
 
   global sem
   global REQ_COMMAND
@@ -1441,7 +1373,6 @@ proc set_overload { threshold turnoff alarm } {
 
   global HANDLE
   global NOTIFIED
->>>>>>> Refactoring, added functionality for standby
   global REQ_COMMAND
   global sem
 
@@ -1545,15 +1476,6 @@ proc parse_standby { bytes } {
 proc print_standby {} {
 
   global sem
-<<<<<<< HEAD
-
-  set out ""
-
-  if { $sem(standby) != -1 } {
-    append out "\tStandby:\n"
-    append out "\t  Threshold:     $sem(standby)W\n"
-    append out "\t  Active:        [ expr $sem(standby_active) == 1 ? "yes" : "no" ]\n"
-=======
 
   set out ""
 
@@ -1565,7 +1487,6 @@ proc print_standby {} {
     } else {
       append out "\t  Action:         blink\n"
     }
->>>>>>> Refactoring, added functionality for standby
     append out "\n"
   }
 
@@ -1609,11 +1530,7 @@ proc set_standby { threshold active } {
   set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(none) ]
 
   if { $rv != -1 } {
-<<<<<<< HEAD
-    set sem(standby)         $threshold
-=======
     set sem(standby)         [ expr $threshold / 1000.0 ]
->>>>>>> Refactoring, added functionality for standby
     set sem(standby_active)  $active
 
     log "INFO:\tStandby successfully set"
@@ -1860,31 +1777,6 @@ proc do_command { command } {
       }
 
     }
-<<<<<<< HEAD
-    ^standby.*$ {
-
-      if { [ llength $command ] == 1 } {
-
-        init [ expr $INIT(auth) | $INIT(subscribe_cmd) ]
-        req_standby
-
-      } elseif { [ llength $command ] == 2 && [ lindex $command 1 ] == "off" } {
-
-        init $INIT(auth)
-        set_standby 0 0
-
-      } else {
-
-        check_command $command 1 "standby" {^standby [0-9](.[0-9]{1,3})*$}
-        
-        init $INIT(auth)
-        set_standby [ lindex $command 1 ] 1
-
-      }
-
-    }  
-=======
->>>>>>> Refactoring, added functionality for standby
     ^sleep.*$ {
 
       check_command $command 1 "sleep" {^sleep [0-9]+$}
@@ -1903,11 +1795,6 @@ proc do_command { command } {
     }
     ^device^ {
 
-<<<<<<< HEAD
-
-      
-=======
->>>>>>> Refactoring, added functionality for standby
     }
     ^debug$ {
 
