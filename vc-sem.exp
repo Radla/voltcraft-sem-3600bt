@@ -133,8 +133,9 @@ set HELP(scheduler) "\
 
 set HELP(countdown) "\
   -countdown <on|off> <hh:mm|+mm>    - set countdown action and runtime\n\
-\                                     on|off    - action of countdown\n\
-\                                     hh:mm|+mm - runtime of countdown\n\
+\                                     on|off - action of countdown\n\
+\                                     hh:mm  - given ETA\n\
+\                                     +mm    - given runtime in minutes\n\
 \n\
   -countdown <reset>                 - reset countdown\n\
 \n\
@@ -156,7 +157,7 @@ set HELP(standby) "\
   -standby <watts> <warn|off>        - set standby mode if consumption is below water-mark\n\
 \                                     watts - low-water-mark, max. 30.00, e.g. 5.0 for 5.0W\n\
 \                                     warn - led blinks when standby detected\n\
-\                                     off  - auto turn off socket when standby detected\n\ 
+\                                     off  - auto turn off socket when standby detected\n\
 \n\
   -standby off                       - turn standby mode off\n\
 \n\
@@ -235,8 +236,7 @@ proc print_sem {} {
 
   set out "\n"
   append out "\tMac:              $sem(mac)\n"
-  append out "\tSecret key (dec): $sem(secret)\n"
-  append out "\tSecret key (hex): 0x[decimal_to_hex $sem(secret) ]\n"
+  # append out "\tSecret key (hex): 0x[decimal_to_hex $sem(secret) ]\n"
 
   append out "\tInitialized:      [ expr $sem(initialized) == 1 ? "yes" : "no" ]\n"
   append out "\tConnected:        [ expr $sem(connected) == 1 ? "yes" : "no" ]\n"
@@ -480,6 +480,20 @@ proc endian { v } {
   set b2 [ expr $v >> 8 ]
 
   return [ expr $b1 << 8 | $b2 ]
+
+}
+
+
+
+
+proc ascii_to_hex { s } {
+
+  set s [ string range $s 0 15 ]
+  set hex ""
+  foreach x [ split $s "" ] {
+    append hex [ format %2.2X [ scan $x %c ] ]
+  }
+  return $hex
 
 }
 
@@ -1355,9 +1369,9 @@ proc print_overload {} {
     if { $sem(overload_turnoff) == 1 } {
       append out "\t  Action:         turn off\n"
     } else {
-      append out "\t  Action:         blink\n"
+      append out "\t  Action:         LED\n"
     }
-    
+
     append out "\t  Alarm:          [ expr $sem(overload_alarm) == 1 ? "yes" : "no" ]\n"
     append out "\n"
   }
@@ -1485,7 +1499,7 @@ proc print_standby {} {
     if { $sem(standby_active) == 1 } {
       append out "\t  Action:         turn off\n"
     } else {
-      append out "\t  Action:         blink\n"
+      append out "\t  Action:         LED\n"
     }
     append out "\n"
   }
@@ -1704,7 +1718,20 @@ proc do_command { command } {
 
         check_command $command 2 "countdown" {^countdown (on|off) ([0-2][0-9]:[0-5][0-9]|\+[0-9]+)$}
 
-        set runtime [ calc_time "00:00" [ lindex $command 2 ] ]
+
+        if { [string range [ lindex $command 2 ] 0 0 ] == "+" } {
+          # countdown given in minutes
+          set runtime [ calc_time "00:00" [ lindex $command 2 ] ]
+
+        } else {
+
+          # countdown given in ETA
+          set now [ time_in_minutes [ current_time_str ] ]
+          set target [ time_in_minutes [ lindex $command 2 ] ]
+          set runtime [ calc_time "00:00" [ expr (1440 + $target - $now) % 1440 ] ] 
+
+        }
+
         set action [ expr [ lindex $command 1 ] == "on" ? 1 : 0 ]
 
         init $INIT(auth)

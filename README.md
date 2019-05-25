@@ -1,25 +1,24 @@
 # voltcraft-sem-3600bt
-Full-features shell script in order to manage Voltcrafts's bluetooth smart energy meter, switch and scheduler with Linux and Raspberry Pi
+_"A full-features shell script in order to manage Voltcrafts's bluetooth smart energy meter, switch and scheduler with Linux and Raspberry Pi"_
 
-The Voltcraft SEM-3600BT is a remote 230V switch and smart energy meter. It was sold by Conrad Elektronic in Germany a few years ago. For details take a look at [Amazon](https://www.amazon.de/Voltcraft-SEM-3600BT-Energiekosten-Messger%C3%A4t-Bluetooth%C2%AE-Schnittstelle-Darstellung/dp/B00IWS7V8G)
+The Voltcraft SEM-3600BT is a remote 230V switch and smart energy meter. It was sold by Conrad Elektronic in Germany a few years ago. For details take a look at [Amazon's](https://www.amazon.de/Voltcraft-SEM-3600BT-Energiekosten-Messger%C3%A4t-Bluetooth%C2%AE-Schnittstelle-Darstellung/dp/B00IWS7V8G). In other countries it is probably known as "Wittech WiTenergy E100".
 
-In other countries it is probably known as Wittech WiTenergy E100 
+In comparison to many remote switches which use the 433MHz band the SEM-3600BT is based on bluetooth v4.0. The advantage is that there is no need to have additional hardware, e.g. via GPIO connected sender/receiver. 
 
-In comparison to many remote switches which use the 433MHz band the SEM-3600BT is based on bluetooth v4.0. The advantage is that there is no need to have additional hardware, e.g. connected via GPIO. 
-
-Voltcraft has the following features:
-* 6 schedulers which can be individually assigned to weekdays or run once
-* Countdown mode in order to switch power on or off after a certain period 
-* Configurable power-off and alarm mode in case of overload
-* Configurable power-off mode in case of low consumption, e.g. devices in standby
-* Energy meter in order to measure volt, ampere and watts 
+Voltcraft SEM-3600BT / Wittech WiTenergy E100 has the following features:
+* 6 schedulers which can run once or assigned to weekdays
+* Countdown mode in order to switch power _on_ or _off_ after a certain period 
+* Configurable overload-mode in order to auto-turn-off or alarm in case of power overload
+* Configurable standby-mode in order to out switch off in case of low consumption
+* Energy meter in order to measure volt, ampere and watts in realtime
+* Energy meter recorder in order to measure power consumpton over long period
 
 For official manual by Voltcraft visit [Conrad](http://www.produktinfo.conrad.com/datenblaetter/675000-699999/684997-an-01-ml-VOLTCRAFT_SEM_3600BT_SMART_E_de_en_fr_nl.pdf)
 
 
 ## Getting started
 
-0. Check pre-conditions
+### 1. Check pre-conditions
 
 Install `expect`:
 ```
@@ -35,7 +34,7 @@ Usage:
 
 ```
 
-1. Discover the MAC address of the smart energy meter
+### 2. Discover the MAC address of the smart energy meter
 
 ```
 $ sudo hcitool lescan
@@ -46,14 +45,16 @@ D0:39:72:BB:AE:EC WiT Power Meter
 
 The devices are called "WiT Power Meter". Since I have two of these, there are two mac addresses
 
-2. Pair bluetooth
+### 3. Pair bluetooth
 
-There is no need to pair devices. 
+There is no need to pair device.
 
-## Aliases
-For convenience reasons I recommend to use aliases. Instead of entering the mac address each time you want to run the script, you can call the script by using meaningful names. 
+
+### 4. Aliases
+For convenience reasons I recommend to use aliases. Instead of entering the bluetootg mac address each time you want to run the script, you can call the script by using meaningful names.
 
 The script tries to read a file called `.known_sems` which must be located in your home folder. It is a text file with two columns:
+
 1. MAC address
 2. Meaningful name
 
@@ -61,12 +62,12 @@ My `.known_sems` looks as follows:
 ```
 $ cat ~/.known_sems
 D0:39:72:BB:AE:EC Entertainment
-20:CD:39:1F:EC:DE Lampe
+20:CD:39:1F:EC:DE Lamp
 ```
 
 This enables you to call the script like this
 ```
-$ ./vc-sem.exp Lampe -sync
+$ ./vc-sem.exp Lamp -sync
 ```
 
 instead of 
@@ -121,8 +122,9 @@ Scheduler commands:
 Countdown commands:
 
  -countdown <on|off> <hh:mm|+mm>    - set countdown action and runtime
-                                      on|off    - action of countdown
-                                      hh:mm|+mm - runtime of countdown
+                                      on|off - action of countdown
+                                      hh:mm  - given ETA
+                                      +mm    - given runtime in minutes
 
  -countdown <reset>                 - reset countdown
 
@@ -145,7 +147,6 @@ Power commands:
                                       watts - low-water-mark, max. 30.00, e.g. 5.0 for 5.0W
                                       warn - led blinks when standby detected
                                       off  - auto turn off socket when standby detected
-
 
  -standby off                       - turn standby mode off
 
@@ -185,24 +186,32 @@ Usage: <mac/alias> -<command1> <parameters...> >-<command2>
 
 You can turn on the socket as follows:
 ```
-$ ./vc-sem.exp Lampe -on
+$ ./vc-sem.exp Lamp -on
 ```
 
-There is no feedback. 
+Note that there isn't any feedback. 
 
-You can turn the lamp off by entering this:
+You can turn the device off by entering this:
 ```
-$ ./vc-sem.exp Lampe -off
-```
-
-If you want to toggle you use the _toggle_ command:
-```
-$ ./vc-sem.exp Lampe -toggle
+$ ./vc-sem.exp Lamp -off
 ```
 
-### Print some information
+If you want to toggle the switch you use the _toggle_ command:
+```
+$ ./vc-sem.exp Lamp -toggle
+```
 
-In order to print information especially information that has been requested make use of the _print_ command:
+### Queueing commands / sleep command
+
+Since it takes some time to establish the bluetooth connection each time you start the script, I have introduced command queing. Each commands starts with a dash. In this example I queue 7 commands. The _sleep_ commands pauses processing before the next command starts. 
+
+```
+$ ./vc-sem.exp Lamp -on -sleep 1 -toggle -sleep 1 -toggle -sleep 1 -off
+```
+
+### Print gathered information
+
+In most cases the script won't print anything. If you want to print some output, e.g. information that has been gathered by previous commands, you must tell the script to do so explicitly. 
 
 ```
 $ ./vc-sem.exp Lam -print
@@ -210,14 +219,14 @@ $ ./vc-sem.exp Lam -print
         Mac:              20:CD:39:1F:EC:DE
         Initialized:      no
         Connected:        no
-        Alias:            Lampe
+        Alias:            Lamp
 ```
 
-In this example there are just the basics since we haven't really requested anything. 
+In this example there are just basic information available since we haven't really requested anything. 
 
 ### See power state of the socket
 
-If you want to see if the socket is turned on and what the power consumption is, you must ask for a measurement and print it afterwards:
+If you want to see if the socket is turned on and what the current power consumption is, you must ask for a measurement first and print it afterwards:
 
 ```
 $ ./vc-sem.exp Lam -measure -print
@@ -225,7 +234,7 @@ $ ./vc-sem.exp Lam -measure -print
         Mac:              20:CD:39:1F:EC:DE
         Initialized:      yes
         Connected:        yes
-        Alias:            Lampe
+        Alias:            Lamp
 
         Measurement:
           Power:          on
@@ -248,27 +257,33 @@ $ ./vc-sem.exp Lam -scheduler 1 -print
         Mac:              20:CD:39:1F:EC:DE
         Initialized:      yes
         Connected:        yes
-        Alias:            Lampe
+        Alias:            Lamp
 
         Scheduler 1:
-          Active:         off
-          Begin:          00:00 turn off
-          End:            00:00 turn off
-          Weekdays:       _______
+          Active:         on
+          Begin:          20:15 turn on
+          End:            21:45 turn off
+          Weekdays:       S_____S
+```
 
+_Note, that I have queued two commands again, i.e. "-schedulers 1" and "-print". The first command gathers the information but doesn't output anything. The second command prints the gathered information._
 
+The scheduler 1 is already set. It runs on Sunday and Saturday.
+
+Let's check all schedulers in order to find a slot that isn't used yet:
+```
 $ ./vc-sem.exp Lam -scheduler -print
 
         Mac:              20:CD:39:1F:EC:DE
         Initialized:      yes
         Connected:        yes
-        Alias:            Lampe
+        Alias:            Lamp
 
         Scheduler 1:
-          Active:         off
-          Begin:          00:00 turn off
-          End:            00:00 turn off
-          Weekdays:       _______
+          Active:         on
+          Begin:          20:15 turn on
+          End:            21:45 turn off
+          Weekdays:       S_____S
 
         Scheduler 2:
           Active:         off
@@ -301,19 +316,17 @@ $ ./vc-sem.exp Lam -scheduler -print
           Weekdays:       _______
 ```
 
-Note, that I have actually queued _two_ commands, i.e. "-schedulers" and "-print". The first command gathers the information from the socket but doesn't output anything. That's why you need to ask explicitly for printing the gathered information. 
-
-Let's set the first scheduler for weekdays from Monday to Friday. The scheduler should turn my lamp on at 7:00 a.m. After 20 minutes it should turn off. I also want to print the result- The command looks like this:
+Ok, let's set the second scheduler for weekdays from Monday to Friday. The scheduler should turn my lamp on at 7:00 a.m. After 20 minutes it should turn off. I also want to print the result- The command looks like this:
 
 ```
-$ ./vc-sem.exp Lam -scheduler 1 on 07:00 off +20 _MTWTF_ -print
+$ ./vc-sem.exp Lam -scheduler 2 on 07:00 off +20 _MTWTF_ -print
 
         Mac:              20:CD:39:1F:EC:DE
         Initialized:      yes
         Connected:        yes
-        Alias:            Lampe
+        Alias:            Lamp
 
-        Scheduler 1:
+        Scheduler 2:
           Active:         on
           Begin:          07:00 turn on
           End:            07:20 turn off
@@ -325,54 +338,54 @@ Instead of setting the end time of 07:20 a.m. I have used an offset of +20 minut
 You can also use an offset for the start time. For example you can start a scheduler that runs in 5 Minutes from now for one hour _once today_ like this:
 
 ```
-$ ./vc-sem.exp Lam -scheduler 1 on +5 off +60
+$ ./vc-sem.exp Lam -scheduler 3 on +5 off +60
 ```
 
-Let's take a look at the settings of scheduler 1:
+Let's take a look at the settings of scheduler 3:
 
 ```
-$ ./vc-sem.exp Lam -scheduler 1 -print
+$ ./vc-sem.exp Lam -scheduler 3 -print
 
         Mac:              20:CD:39:1F:EC:DE
         Initialized:      yes
         Connected:        yes
-        Alias:            Lampe
+        Alias:            Lamp
 
-        Scheduler 1:
+        Scheduler 3:
           Active:         on
           Begin:          08:38 turn on
           End:            09:38 turn off
           Weekdays:       _______
 ```
 
-In order to reset a specific scheduler of all schedulers run:
+In order to reset a specific scheduler or all schedulers run:
 
 ``` 
-$ ./vc-sem.exp Lam -scheduler 1 reset
+$ ./vc-sem.exp Lam -scheduler 3 reset
 $ ./vc-sem.exp Lam -scheduler reset
 ```
 
 ### Countdown
 
-The socket has a countdown timer. You can set it with an ease like this:
+The socket has a timer. You can set it with an ease like this:
 ```
 $ ./vc-sem.exp Lam -countdown off +5
 ```
 
-This activates a countdown timer which runs for 5 minutes and then turns the socket off. You can also specify a runtime like this:
+This activates a countdown timer which runs for 5 minutes and then turns the socket off. You can also specify a _time of arrival (ETA)_ like this:
 
 ```
 $ ./vc-sem.exp Lam -countdown off 09:45
 ```
 
-Ask for information about an already running countdown like this: 
+Let's ask for information about the countdown that we have started before:
 ```
 $ ./vc-sem.exp Lam -countdown -print
 
         Mac:              20:CD:39:1F:EC:DE
         Initialized:      yes
         Connected:        yes
-        Alias:            Lampe
+        Alias:            Lamp
 
         Measurement:
           Power:          on
@@ -384,23 +397,23 @@ $ ./vc-sem.exp Lam -countdown -print
           Power factor:   0.516
 
         Countdown:        on
-          Action:         off
-          Remaining:      09:44:28
-          ETA:            18:28
+          Action:         on
+          Remaining:      22:40:53
+          ETA:            09:44
 ```
 
-In order to stop the countdown you enter this:
+Enter the following in order to stop the running countdown:
 ```
 $ ./vc-sem.exp Lam -countdown reset
 ```
 
 ## Power commands
 
-The smart energy meter is of course able to monitor the power consumption. It can perform actions when power consumption falls below or exceeds a certain limit. 
+The smart energy meter monitors power consumption continuously. It can perform actions when power consumption falls below or exceeds a certain limit.
 
-### Overload 
+### Overload mode
 
-You can define an action in case that the smart energy meter exceeds a limit in terms of power consumption. In this example the socket turn immediately of if power consumption gets higher that 1000 Watts:
+You can define an action in case that the smart energy meter exceeds a limit in terms of power consumption. In this example the socket turn off immediately in case that power consumption gets higher that 1000 Watts:
 
 ```
 $ ./vc-sem.exp Lam -overload 1000 off -print
@@ -408,7 +421,7 @@ $ ./vc-sem.exp Lam -overload 1000 off -print
         Mac:              20:CD:39:1F:EC:DE
         Initialized:      yes
         Connected:        yes
-        Alias:            Lampe
+        Alias:            Lamp
 
         Overload:
           Threshold:      1000 W
@@ -423,7 +436,7 @@ $ ./vc-sem.exp Lam -overload 1000 off alarm -print
         Mac:              20:CD:39:1F:EC:DE
         Initialized:      yes
         Connected:        yes
-        Alias:            Lampe
+        Alias:            Lamp
 
         Overload:
           Threshold:      1000 W
@@ -431,14 +444,14 @@ $ ./vc-sem.exp Lam -overload 1000 off alarm -print
           Alarm:          yes
 ```
 
-if you just want to see a warning - the led blinks red - then it goes like this:
+If you just want to get a visual warning - led blinks red - then it goes like this:
 ```
 $ ./vc-sem.exp Lam -overload 1000 warn -print
 
         Mac:              20:CD:39:1F:EC:DE
         Initialized:      yes
         Connected:        yes
-        Alias:            Lampe
+        Alias:            Lamp
 
         Overload:
           Threshold:      1000 W
@@ -446,14 +459,14 @@ $ ./vc-sem.exp Lam -overload 1000 warn -print
           Alarm:          no
 ```
 
-Turn off overload by entering this:
+By entering this you turn off overload:
 ```
 $ ./vc-sem.exp Lam -overload off
 ```
 
 ### Standby mode
 
-You can also set an action if the power consumption falls unter a limit. If you just want to be warned, e.g. in case that consumption falls under 3 Watts, enter the following:
+You can also set an action if the power consumption falls unter a given limit. If you just want to be warned (led blinks), e.g. in case that consumption falls under 3 Watts, enter the following:
 
 ```
 $ ./vc-sem.exp Lam -standby 3 warn
@@ -471,6 +484,121 @@ $ ./vc-sem.exp Lam -standby off
 
 ## Measurements
 
+### Snapshot
 
-## Other commands
+If you want to take and print a single measurement you just have to run the script like this:
 
+```
+$ ./vc-sem.exp Lamp -measure -print
+
+        Mac:              20:CD:39:1F:EC:DE
+        Initialized:      yes
+        Connected:        yes
+        Alias:            Lamp
+
+        Measurement:
+          Power:          off
+          Countdown:      on
+          Voltage:        237.4 V
+          Ampere:         0.0 A
+          Watts:          0.0 W
+          Frequency:      50.01 Hz
+          Power factor:   1.0
+```
+
+### Realtime monitoring
+
+The _watch_ captures the power data for a given period or infinitely. This monitors the power consumption for 5 seconds:
+```
+$ ./vc-sem.exp Lamp -watch 5
+2019-05-25 11:41:40;1;1;237.7;0.035;4.322;49.99;0.514
+2019-05-25 11:41:41;1;1;237.6;0.035;4.304;49.99;0.512
+2019-05-25 11:41:42;1;1;237.7;0.035;4.306;49.99;0.513
+2019-05-25 11:41:43;1;1;237.7;0.035;4.317;49.99;0.514
+```
+
+Note that the _watch_ command directly prints a csv record. If you have left out the period, here "5" for 5 seconds, it runs forever. You can stop it by pressing CTRL-C
+
+Each record has the following information:
+1. Column: Timestamp
+1. Column: Power state, 1 = on, 0 = off
+1. Column: Countdown state, 1 = running, 0 = off
+1. Column: Volt
+1. Column: Ampere
+1. Column: Watts
+1. Column: Power factor (whatever this means)
+
+### Request recorded data
+
+_TODO_
+
+## More commands
+
+### Synchronize time
+
+Actually time is synchronized each time you run a command. If you just want to synchronize the time from your PC with the smart meter call:
+
+```
+$ ./vc-sem.exp Lamp -sync
+```
+
+### Verbose
+
+If you want to get some information what's going on while the script is running, add the verbose command. 
+
+```
+$ ./vc-sem.exp Lamp -verbose -countdown off +10 -measure -off
+INFO:   Try to connect to 20:CD:39:1F:EC:DE
+INFO:   Connected to 20:CD:39:1F:EC:DE
+INFO:   Sync SEM
+INFO:   >>>     char-write-req 18 03e30705190b23340c03
+INFO:   OK
+INFO:   SEM synced successfully
+INFO:   Set countdown
+INFO:   >>>     char-write-req 18 06000a
+INFO:   OK
+INFO:   Countdown successfully set
+INFO:   Subscribe for notification handle 0x13
+INFO:   >>>     char-write-req 13 0100
+INFO:   OK
+INFO:   Successfully subscripted to notification handle 0x13
+INFO:   Wait for notification (5)
+INFO:   <<<     Notification handle = 0x0012 value: 02 03 23 83 01 00 00 01 00 00 01 10 00 02 49 97
+INFO: Handle 18, Bytes 2 3 35 131 1 0 0 1 0 0 1 16 0 2 73 151
+        Measurement:
+          Power:          off
+          Countdown:      on
+          Voltage:        238.3 V
+          Ampere:         0.0 A
+          Watts:          0.0 W
+          Frequency:      49.97 Hz
+          Power factor:   1.0
+
+
+INFO:   Measurement successfully captured
+INFO:   Switch SEM off
+INFO:   >>>     char-write-req 18 0400
+INFO:   OK
+INFO:   SEM successfully switched
+INFO:   Disconnect from 20:CD:39:1F:EC:DE
+```
+
+### Debug
+
+The script uses _gatttool_ from the _bluez_ bluetooth stack. You can also see the commands sent to gatttool by using the _debug_ command:
+
+```
+$ ./vc-sem.exp Lamp -debug -countdown off +10 -measure -off
+[                 ][LE]> connect 20:CD:39:1F:EC:DE
+Attempting to connect to 20:CD:39:1F:EC:DE
+Connection successful
+[20:CD:39:1F:EC:DE][LE]> char-write-req 18 03e30705190b26310c03
+Characteristic value was written successfully
+[20:CD:39:1F:EC:DE][LE]> char-write-req 18 06000a
+Characteristic value was written successfully
+[20:CD:39:1F:EC:DE][LE]> char-write-req 13 0100
+Characteristic value was written successfully
+Notification handle = 0x0012 value: 02 03 23 82 01 00 00 01 00 00 01 10 00 02 49 98
+[20:CD:39:1F:EC:DE][LE]> char-write-req 18 0400
+Characteristic value was written successfully
+```
