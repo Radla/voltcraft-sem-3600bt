@@ -529,6 +529,9 @@ Each record has the following information:
 1. Column: Frequency (Hz)
 1. Column: Power factor (whatever this means)
 
+
+## Request recorded data
+
 ### Power-on uptime
 
 The smart energy meter records the uptime - the time when the socket is turned on.
@@ -546,21 +549,28 @@ $ vc-sem Ent -uptime -print
         Power-on uptime:  2 days, 20:38
 ```
 
-If you want to reset this counter enter the following:
+
+### Power-on consumption
+
+The smart energy meter records the overall power consumption. This can be queried like this:
+
 ```
-$ vc-sem Ent -uptime reset -print
+$ vc-sem Ent -consumption -print
 
         Mac:              D0:39:72:BB:AE:EC
         Initialized:      yes
         Connected:        yes
         Alias:            Entertainment
 
-        Power-on uptime:  0 days, 00:00
+        Power-on consumption:  0.109 kWh
 ```
 
-### Request recorded data
+### Reset recorded data
 
-
+If you want to reset all recorded data enter the following:
+```
+$ vc-sem Ent -reset
+```
 
 ## More commands
 

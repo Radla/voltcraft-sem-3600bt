@@ -1771,40 +1771,6 @@ proc print_uptime {} {
 
 
 
-proc reset_data {} {
-
-  global HANDLE
-  global NOTIFIED
-  global REQ_COMMAND
-  global sem
-
-  set bytes {}
-
-  log "INFO:\tReset power-on uptime"
-
-  # Byte 1: Uptime command
-  lappend bytes $REQ_COMMAND(reset)
-
-  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(none) ]
-
-  if { $rv != -1 } {
-    set sem(uptime) 0
-
-    log "INFO:\tPower-on uptime successfully reset"
-    return 0
-
-  } else {
-
-    log "ERROR:\tReset power-on uptime failed"
-    return -1
-
-  }
-
-}
-
-
-
-
 proc req_consumption { } {
 
   global HANDLE
@@ -1870,6 +1836,41 @@ proc print_consumption {} {
   }
 
   return $out
+
+}
+
+
+
+
+proc reset_data {} {
+
+  global HANDLE
+  global NOTIFIED
+  global REQ_COMMAND
+  global sem
+
+  set bytes {}
+
+  log "INFO:\tReset power-on uptime"
+
+  # Byte 1: Uptime command
+  lappend bytes $REQ_COMMAND(reset)
+
+  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(none) ]
+
+  if { $rv != -1 } {
+    set sem(uptime) 0
+    set sem(consumption) 0
+
+    log "INFO:\tPower-on uptime successfully reset"
+    return 0
+
+  } else {
+
+    log "ERROR:\tReset power-on uptime failed"
+    return -1
+
+  }
 
 }
 
