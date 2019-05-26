@@ -58,27 +58,16 @@ set REQ_COMMAND(consumption)   23
 set REQ_COMMAND(uptime)        24
 set REQ_COMMAND(reset)         25
 
-set REQ_HND(device_name)      3
-set REQ_HND(device_serial)    32
-set REQ_HND(device_firmware)  34
-set REQ_HND(device_hardware)  36
-set REQ_HND(device_software)  38
-set REQ_HND(device_vendor)    40
+set REQ_HND(device_name)       3
+set REQ_HND(device_serial)     32
+set REQ_HND(device_firmware)   34
+set REQ_HND(device_hardware)   36
+set REQ_HND(device_software)   38
+set REQ_HND(device_vendor)     40
 
 set NOTIFY(none)               -1
 set NOTIFY(measurement)        18
 set NOTIFY(cmd)                24
-
-set INIT(auth)                 1
-set INIT(subscribe_cmd)        2
-set INIT(subscribe_measures)   4
-set INIT(query_standby)        8
-set INIT(query_overload)       16
-set INIT(query_schedulers)     32
-set INIT(query_countdown)      64
-set INIT(query_uptime)         128
-set INIT(query_consumption)    256
-set INIT(device_info)          512
 
 set NOTIFIED(none)             0
 set NOTIFIED(measurement)      1
@@ -88,6 +77,14 @@ set NOTIFIED(overload)         8
 set NOTIFIED(standby)          16
 set NOTIFIED(uptime)           32
 set NOTIFIED(consumption)      64
+set NOTIFIED(data_hour)        128
+set NOTIFIED(data_minute)      256
+
+set INIT(connect)              1
+set INIT(auth)                 2
+set INIT(subscribe_cmd)        4
+set INIT(subscribe_measures)   8
+set INIT(device)               16
 
 array set aliases              {}
 
@@ -100,10 +97,10 @@ set sem(device_hardware)       ""
 set sem(device_software)       ""
 set sem(device_vendor)         ""
 
-set sem(secret)                -1
+set sem(initialized)           0
 set sem(connected)             -1
-set sem(initialized)           -1
-set sem(device)                -1
+
+set sem(secret)                -1
 set sem(power)                 -1
 set sem(schedulers)            -1
 set sem(countdown)             -1
@@ -111,13 +108,11 @@ set sem(overload)              -1
 set sem(standby)               -1
 set sem(uptime)                -1
 set sem(consumption)           -1
-set sem(subscribe_cmd)         -1
 set sem(subscribe_measures)    -1
 
-set HELP(usage) "Usage: <mac/alias> -<command1> <parameters...> >-<command2>\n\
+set HELP(usage) "Usage: <mac/alias> -<command1> <parameters...> -<command2>\n\
  \                                  <mac>: bluetooth mac address of bulb\n\
- \                                  <alias>: you can use alias instead of mac address \n\
- \                                           after you have run setup (see setup) \n\
+ \                                  <alias>: you can use alias instead of mac address, see ~/.known_sems \n\
  \                                  <command>: For command and parameters"
 set HELP(sync) "\
   -sync                              - synchronize time"
@@ -142,6 +137,18 @@ set HELP(uptime) "\
 
 set HELP(consumption) "\
   -consumption                       - query power-on consumption"
+
+set HELP(total) "\
+  -total                             - query power-on uptime and consumption"
+
+set HELP(data) "\
+  -data hour <from:MM-DD|-hh> \[<to:MM-DD|+hh>\]\n\
+\                                   - query data on hourly base, max. 90 days in the past\n\
+\                                     from date or hours from now in the past\n\
+\                                     (optional) to date or hours after \"from\"-date\n\
+  -data min <hh:mm|-mm> <hh:mm|+mm>  - query recorded data on minute base, max. 4h in the past\n\
+\                                     from date or hours from now in the past\n\
+\                                     (optional) to date or hours after \"from\"-date"
 
 set HELP(reset) "\
   -reset                             - reset all recorded data"
@@ -256,6 +263,8 @@ proc help { argv } {
     puts "$HELP(watch)"
     puts "$HELP(uptime)"
     puts "$HELP(consumption)"
+    puts "$HELP(total)\n"
+    puts "$HELP(data)"
     puts "$HELP(reset)"
     puts "\nOther commands:\n"
     puts "$HELP(print)"
@@ -282,8 +291,6 @@ proc print_sem {} {
   set out "\n"
   append out "\tMac:              $sem(mac)\n"
   append out [ print_device ]
-  append out "\tInitialized:      [ expr $sem(initialized) == 1 ? "yes" : "no" ]\n"
-  append out "\tConnected:        [ expr $sem(connected) == 1 ? "yes" : "no" ]\n"
   append out "\tAlias:            $sem(alias)\n"
   append out "\n"
   append out [ print_measurement ]
@@ -582,61 +589,65 @@ proc init { level } {
   global HANDLE
   global sem
 
-  if { $sem(connected) != 1 } {
-    set sem(connected) [ gatt_connect $sem(mac) ]
-  }
+  if { ( $sem(initialized) & $INIT(connect) ) != $INIT(connect) } {
 
-  if { $sem(connected) == 1 } {
-    if { $sem(initialized) != 1 && $level & $INIT(auth) } {
-      req_sync
-      if { $sem(initialized) != 1 } {
-        puts "ERROR:\tInitialization failed"
+    set sem(initialized) [ gatt_connect $sem(mac) ]
+
+    if { $sem(initialized) != $INIT(connect) } {
+
+      puts "ERROR:\tConnection failed"
+      exit -1
+
+    } else {
+      
+      # sync and authorize
+      set synced [ req_sync ]
+
+      if { ( $synced & $INIT(auth) ) != $INIT(auth) } {
+
+        puts "ERROR:\tAuthorization failed"
         exit -1
+
+      } else {
+
+        set sem(initialized) [ expr $sem(initialized) | $INIT(auth) ]
+
       }
-    }
-    if { $sem(device) == -1 && $level & $INIT(device_info) } {
-      set sem(device) [ req_device ]
+
     }
 
-    if { $sem(subscribe_cmd) == -1 && $level & $INIT(subscribe_cmd) } {
-      set sem(subscribe_cmd) [ req_subscribe_notification $HANDLE(subscribe_cmd) 1 ]
-    }
-    if { $sem(standby) == -1 && $level & $INIT(query_standby) } {
-      set sem(standby) [ req_standby ]
-    }
-    if { $sem(overload) == -1 && $level & $INIT(query_overload) } {
-      set sem(overload) [ req_overload ]
-    }
-    if { $sem(schedulers) == -1 && $level & $INIT(query_schedulers) } {
-      for { set i 0 } { $i < 6 } { incr i } {
-        req_scheduler $i
-      }
-      set sem(schedulers) 1
-    }
-    if { $sem(uptime) == -1 && $level & $INIT(query_uptime) } {
-      set sem(uptime) [ req_overload ]
-    }
-    if { $sem(consumption) == -1 && $level & $INIT(query_consumption) } {
-      set sem(consumption) [ req_consumption ]
-    }
-    if { $sem(subscribe_measures) == -1 && $level & $INIT(subscribe_measures) } {
-      set sem(subscribe_measures) [ req_subscribe_notification $HANDLE(subscribe_measures) 1 ]
-      capture_measurement
-    }
-    if { $sem(countdown) == -1 && $level & $INIT(query_countdown) } {
-      capture_measurement
-
-      if { $sem(countdown) == 1 } {
-        set sem(countdown) [ capture_countdown ]
-      }
-    }
-
-  } else {
-    puts "ERROR:\tConnection failed"
-    exit -1
   }
 
-  return $sem(connected)
+  if { ( $level & $INIT(device) ) == $INIT(device) && ( $sem(initialized) & $INIT(device) ) != $INIT(device) } {
+
+    set device [ req_device ]
+    set sem(initialized) [ expr $sem(initialized) | $device]
+
+  }
+
+  if { ( $level & $INIT(subscribe_cmd) ) == $INIT(subscribe_cmd) && ( $sem(initialized) & $INIT(subscribe_cmd) ) != $INIT(subscribe_cmd) } {
+
+    set subscribe_cmd [ req_subscribe_notification $HANDLE(subscribe_cmd) 1 ]
+    if { $subscribe_cmd == 1 } {
+
+      set sem(initialized) [ expr $sem(initialized) | $INIT(subscribe_cmd) ]
+
+    }
+
+  }
+
+  if { ( $level & $INIT(subscribe_measures) ) == $INIT(subscribe_measures) && ( $sem(initialized) & $INIT(subscribe_measures) ) != $INIT(subscribe_measures) } {
+
+    set subscribe_measures [ req_subscribe_notification $HANDLE(subscribe_measures) 1 ]
+    if { $subscribe_measures == 1 } {
+
+      set sem(initialized) [ expr $sem(initialized) | $INIT(subscribe_measures) ]
+
+    }
+
+  }
+
+  return $sem(initialized)
 
 }
 
@@ -645,6 +656,7 @@ proc init { level } {
 
 proc gatt_connect { mac } {
 
+  global INIT
   global DELAY
 
   log "INFO:\tTry to connect to $mac"
@@ -654,7 +666,7 @@ proc gatt_connect { mac } {
   expect "Connection successful" {
     after $DELAY
     log "INFO:\tConnected to $mac"
-    return 1
+    return $INIT(connect)
   }
   log "ERROR:\tConnection failed"
   return 0
@@ -854,6 +866,7 @@ proc req_sync {} {
   global HANDLE
   global NOTIFIED
   global REQ_COMMAND
+  global INIT
   global sem
 
   set datetime [ current_datetime ]
@@ -891,12 +904,12 @@ proc req_sync {} {
   if { $rv != -1 } {
 
     log "INFO:\tSEM synced successfully"
-    set sem(initialized) 1
+    return $INIT(auth)
 
   } else {
 
     log "ERROR:\tSynchronization of SEM failed"
-    return -1
+    return 0
 
   }
 
@@ -963,12 +976,12 @@ proc req_subscribe_notification { handle s } {
   if { $rv != -1 } {
 
     log "INFO:\tSuccessfully subscripted to notification handle 0x[ decimal_to_hex $handle ]"
-    return 0
+    return $s
 
   } else {
 
     log "ERROR:\tSubscription to notification handle 0x[ decimal_to_hex $handle ] failed"
-    return -1
+    return 0
 
   }
 
@@ -1007,41 +1020,6 @@ proc req_scheduler { i } {
 
     log "ERROR:\tSwitching SEM failed"
     return -1
-  }
-
-}
-
-
-
-
-proc req_subscribe_notification { handle s } {
-
-  global NOTIFIED
-  global sem
-
-  set bytes {}
-
-  log "INFO:\tSubscribe for notification handle 0x[ decimal_to_hex $handle ]"
-
-  # Byte 1: Subscribe/unsubscribe command
-  set s [ expr $s == 1 ? 1 : 0 ]
-  lappend bytes $s
-
-  # Byte 2: static 0
-  lappend bytes 0
-
-  set rv [ gatt_char_write_req $handle $bytes $NOTIFIED(none) ]
-
-  if { $rv != -1 } {
-
-    log "INFO:\tSuccessfully subscripted to notification handle 0x[ decimal_to_hex $handle ]"
-    return 0
-
-  } else {
-
-    log "ERROR:\tSubscription to notification handle 0x[ decimal_to_hex $handle ] failed"
-    return -1
-
   }
 
 }
@@ -1409,7 +1387,7 @@ proc print_measurement {} {
   append out "\tMeasurement:\n"
   append out "\t  Power:          [ expr $sem(power) == 1 ? "on" : "off" ]\n"
   append out "\t  Countdown:      [ expr $sem(countdown) == 1 ? "on" : "off" ]\n"
-  append out "\t  Voltage:        $sem(latest_voltage) V\n"
+  append out "\t  Voltage:        $sem(latest_voltage) VAC\n"
   append out "\t  Ampere:         $sem(latest_ampere) A\n"
   append out "\t  Watts:          $sem(latest_watts) W\n"
   append out "\t  Frequency:      $sem(latest_frequency) Hz\n"
@@ -1428,8 +1406,8 @@ proc print_measurement_as_csv {} {
   global sem
 
   append out [ current_datetime_str ]
-  append out ";$sem(power);$sem(countdown);$sem(latest_voltage);$sem(latest_ampere)"
-  append out ";$sem(latest_watts);$sem(latest_frequency);$sem(latest_factor)"
+  append out "\t$sem(power)\t$sem(countdown)\t$sem(latest_voltage)\t$sem(latest_ampere)"
+  append out "\t$sem(latest_watts)\t$sem(latest_frequency)\t$sem(latest_factor)"
 
   return $out
 
@@ -1813,7 +1791,7 @@ proc parse_consumption { bytes } {
     return 0
   }
 
-  set sem(consumption) [ expr ( [ lindex $bytes 13 ] + ( [ lindex $bytes 14 ] << 8 ) + ( [ lindex $bytes 15 ] << 15 ) + ( [ lindex $bytes 16 ] << 24 ) ) ]
+  set sem(consumption) [ expr ( [ lindex $bytes 13 ] + ( [ lindex $bytes 14 ] << 8 ) + ( [ lindex $bytes 15 ] << 16 ) + ( [ lindex $bytes 16 ] << 24 ) ) ]
 
   log [ print_consumption ]
 
@@ -1879,6 +1857,7 @@ proc reset_data {} {
 
 proc req_device {} {
 
+  global INIT
   global REQ_HND
   global sem
 
@@ -1889,9 +1868,7 @@ proc req_device {} {
   set sem(device_software) [ ascii [ read_handle $REQ_HND(device_software) ] ]
   set sem(device_vendor)   [ ascii [ read_handle $REQ_HND(device_vendor) ] ]
 
-  set sem(device) 0
-
-  return 0
+  return $INIT(device)
 
 }
 
@@ -1900,11 +1877,12 @@ proc req_device {} {
 
 proc print_device {} {
 
+  global INIT
   global sem
 
   set out ""
 
-  if { $sem(device) != -1 } {
+  if { ( $sem(initialized) & $INIT(device) ) == $INIT(device) } {
     append out "\tDevice name:      $sem(device_name)\n"
     append out "\tDevice vendor:    $sem(device_vendor)\n"
     append out "\tDevice serial:    $sem(device_serial)\n"
@@ -1931,24 +1909,24 @@ proc do_command { command } {
   switch -regexp $command {
     ^sync$ {
 
-      init $INIT(auth)
+      init 0
 
     }
     ^on$ {
 
-      init $INIT(auth)
+      init 0
       req_switch 1
 
     }
     ^off$ {
 
-      init $INIT(auth)
+      init 0
       req_switch 0
 
     }
     ^toggle$ {
 
-      init [ expr $INIT(auth) | $INIT(subscribe_measures) ]
+      init $INIT(subscribe_measures)
       capture_measurement
       set s [ expr $sem(power) == 0 ? 1 : 0 ]
       req_switch $s
@@ -1956,7 +1934,7 @@ proc do_command { command } {
     }
     ^measure$ {
 
-      init [ expr $INIT(auth) | $INIT(subscribe_measures) ]
+      init $INIT(subscribe_measures)
       capture_measurement
 
     }
@@ -1970,7 +1948,7 @@ proc do_command { command } {
         set until -1
       }
 
-      init [ expr $INIT(auth) | $INIT(subscribe_measures) ]
+      init $INIT(subscribe_measures)
 
       set current_seconds -1
       while { $current_seconds < $until || $until == -1 } {
@@ -1982,7 +1960,7 @@ proc do_command { command } {
     }
     ^scheduler$ {
 
-      init [ expr $INIT(auth) | $INIT(subscribe_cmd) ]
+      init $INIT(subscribe_cmd)
       for { set n 0 } { $n < 6 } { incr n } {
         req_scheduler $n
       }
@@ -1990,7 +1968,7 @@ proc do_command { command } {
     }
     ^scheduler\ reset$ {
 
-      init [ expr $INIT(auth) | $INIT(subscribe_cmd) ]
+      init $INIT(subscribe_cmd)
       for { set n 0 } { $n < 6 } { incr n } {
         set_scheduler $n 0 "00:00" 0 "00:00" 0 "_______"
       }
@@ -2001,7 +1979,7 @@ proc do_command { command } {
       set _c "[ lindex $command 0 ] [ lindex $command 1 ]"
       check_command $_c 1 "scheduler" {^scheduler [1-6]$}
 
-      init [ expr $INIT(auth) | $INIT(subscribe_cmd) ]
+      init $INIT(subscribe_cmd)
 
       # index of scheduler
       set n [ expr [ lindex $command 1 ] - 1 ]
@@ -2036,6 +2014,7 @@ proc do_command { command } {
 
         }
 
+      # set new scheduler
       } elseif { [ llength $command ] > 4 } {
 
         if { [ llength $command ] == 6 } {
@@ -2060,20 +2039,23 @@ proc do_command { command } {
     }
     ^countdown.*$ {
 
+      # query countdown state
       if { [ llength $command ] == 1 } {
 
-        init [ expr $INIT(auth) | $INIT(subscribe_cmd) | $INIT(subscribe_measures) ]
+        init [ expr $INIT(subscribe_cmd) | $INIT(subscribe_measures) ]
         capture_measurement
 
         if { $sem(countdown) == 1 } {
           capture_countdown
         }
 
+      # reset countdown
       } elseif { [ llength $command ] == 2 && [ lindex $command 1 ] == "reset" } {
 
-        init $INIT(auth)
+        init 0
         set_countdown 0 "00:00"
 
+      # set new countdown
       } else {
 
         check_command $command 2 "countdown" {^countdown (on|off) ([0-2][0-9]:[0-5][0-9]|\+[0-9]+)$}
@@ -2094,7 +2076,7 @@ proc do_command { command } {
 
         set action [ expr [ lindex $command 1 ] == "on" ? 1 : 0 ]
 
-        init $INIT(auth)
+        init 0
         set_countdown $action $runtime
 
       }
@@ -2104,19 +2086,19 @@ proc do_command { command } {
 
       if { [ llength $command ] == 1 } {
 
-        init [ expr $INIT(auth) | $INIT(subscribe_cmd) ]
+        init $INIT(subscribe_cmd)
         req_overload
 
       } elseif { [ llength $command ] == 2 && [ lindex $command 1 ] == "off" } {
 
-        init $INIT(auth)
+        init 0
         set_overload 0 0 0
 
       } elseif { [ llength $command ] == 3 } {
 
         check_command $command 2 "overload" {^overload [1-3]?[0-9]{1,3} (warn|off|alarm)$}
 
-        init $INIT(auth)
+        init 0
         if { [ lindex $command 2 ] == "warn" } {
           set_overload [ lindex $command 1 ] 0 0
         } elseif { [ lindex $command 2 ] == "off" } {
@@ -2129,7 +2111,7 @@ proc do_command { command } {
 
         check_command $command 3 "overload" {^overload [1-3]?[0-9]{1,3} (warn|off) alarm$}
 
-        init $INIT(auth)
+        init 0
         if { [ lindex $command 2 ] == "warn" } {
           set_overload [ lindex $command 1 ] 0 1
         } else {
@@ -2142,19 +2124,19 @@ proc do_command { command } {
 
       if { [ llength $command ] == 1 } {
 
-        init [ expr $INIT(auth) | $INIT(subscribe_cmd) ]
+        init $INIT(subscribe_cmd)
         req_standby
 
       } elseif { [ llength $command ] == 2 && [ lindex $command 1 ] == "off" } {
 
-        init $INIT(auth)
+        init 0
         set_standby 0 0
 
       } else {
 
         check_command $command 1 "standby" {^standby [0-9](.[0-9]{1,3})* (warn|off)$}
 
-        init $INIT(auth)
+        init 0
         if { [ lindex $command 2 ] == "warn" } {
           set_standby [ lindex $command 1 ] 0
         } else {
@@ -2166,31 +2148,55 @@ proc do_command { command } {
     }
     ^uptime$ {
 
-      init [ expr $INIT(auth) | $INIT(subscribe_cmd) ]
+      init $INIT(subscribe_cmd)
       req_uptime
 
     }
     ^consumption$ {
 
-      init [ expr $INIT(auth) | $INIT(subscribe_cmd) ]
+      init $INIT(subscribe_cmd)
       req_consumption
 
     }
     ^total$ {
 
-      init [ expr $INIT(auth) | $INIT(subscribe_cmd) ]
+      init $INIT(subscribe_cmd)
+      req_uptime
       req_consumption
 
     }
     ^dump$ {
 
-      init [ expr $INIT(auth) | $INIT(subscribe_cmd) | $INIT(query_standby) | $INIT(query_overload) | $INIT(query_schedulers) | $INIT(query_uptime) | $INIT(query_consumption) | $INIT(device_info) | $INIT(subscribe_measures) | $INIT(query_countdown) ]
+      # init all
+      init 65535
 
+      req_device
+      req_overload
+      req_standby
+      req_consumption
+      req_uptime
+      for { set i 0 } { $i < 6 } { incr i } {
+        req_scheduler $i
+      }
+      capture_measurement
+      if { $sem(countdown) == 1 } {
+        capture_countdown
+      }
     }
     ^reset$ {
 
-      init [ expr $INIT(auth) ]
+      init 0
       reset_data
+
+    }
+    ^device$ {
+
+      init $INIT(device)
+
+    }
+    ^print$ {
+
+      print_sem
 
     }
     ^sleep.*$ {
@@ -2199,20 +2205,9 @@ proc do_command { command } {
       after [ expr [ lindex $command 1 ] * 1000 ]
 
     }
-    ^print$ {
-
-      print_sem
-
-    }
     ^verbose$ {
 
       set verbose 1
-
-    }
-    ^device$ {
-
-      init [ expr $INIT(auth) ]
-      req_device
 
     }
     ^debug$ {
@@ -2302,7 +2297,7 @@ while { 1 } {
       do_command $command
       set command {}
     }
-    if { [ llength $argv] == 0 } {
+    if { [ llength $argv ] == 0 } {
       do_command $param
       break
     }

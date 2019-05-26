@@ -303,6 +303,43 @@ Example:
 01 0F 00 08
 -> queries interval from 16:00 to 24:00
 
+
+----
+Query per hour 
+
+at 22:05
+
+char-write-req 18 01000007
+                   | | | + Records (hours back)
+                   | +-+ Hours ago
+                   + Command
+
+Notification handle = 0x0018 value: 01 00 00 07 14 00 00 00 00 00 00 00 00 00 20 00 20 00
+                                    |  |   | |  7     6     5     4     3     2     1  
+                                    |  |   | |  |     |     |     |     |     |     + R7: 32 Wh, 21:00
+                                    |  |   | |  |     |     |     |     |     + R6: 32 Wh, 20:00
+                                    |  |   | |  |     |     |     |     + R5: 0 Wh, 19:00
+                                    |  |   | |  |     |     |     + R4: 0 Wh, 18:00
+                                    |  |   | |  |     |     + R3: 0 Wh, 17:00
+                                    |  |   | |  |     + R2: 0 Wh, 16:00
+                                    |  |   | |  + R1: 20 Wh, 15:00
+                                    |  |   | + Avail. records (last 7 hours)
+                                    |  +---+ Req. Timeframe (2 bytes)
+                                    + Command 01
+
+-----
+Query per ??? 
+
+at 22:05
+                  0 1 2 3
+char-write-req 18 02000008
+                   | | | + Records (hours back)
+                   | | + 00
+                   | + Minutes ago (up to 240)
+                   + Command
+
+
+
 ```
 
 ### Interprete stored measerment notification
