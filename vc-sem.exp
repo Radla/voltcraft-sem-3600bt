@@ -45,6 +45,10 @@ set HANDLE(subscribe_measures) 19
 set HANDLE(cmd)                24
 set HANDLE(subscribe_cmd)      25
 
+
+set REQ_COMMAND(data_hour)     1
+set REQ_COMMAND(data_minute)   2
+set REQ_COMMAND(sync)          3
 set REQ_COMMAND(sync)          3
 set REQ_COMMAND(switch)        4
 set REQ_COMMAND(countdown)     6
@@ -77,8 +81,7 @@ set NOTIFIED(overload)         8
 set NOTIFIED(standby)          16
 set NOTIFIED(uptime)           32
 set NOTIFIED(consumption)      64
-set NOTIFIED(data_hour)        128
-set NOTIFIED(data_minute)      256
+set NOTIFIED(data)             128
 
 set INIT(connect)              1
 set INIT(auth)                 2
@@ -87,6 +90,8 @@ set INIT(subscribe_measures)   8
 set INIT(device)               16
 
 array set aliases              {}
+
+set sem(initialized)           0
 
 set sem(mac)                   ""
 set sem(alias)                 ""
@@ -97,18 +102,16 @@ set sem(device_hardware)       ""
 set sem(device_software)       ""
 set sem(device_vendor)         ""
 
-set sem(initialized)           0
-set sem(connected)             -1
-
 set sem(secret)                -1
 set sem(power)                 -1
-set sem(schedulers)            -1
 set sem(countdown)             -1
 set sem(overload)              -1
 set sem(standby)               -1
 set sem(uptime)                -1
 set sem(consumption)           -1
-set sem(subscribe_measures)    -1
+
+array set data_per_hour              {}
+array set data_per_minute            {}
 
 set HELP(usage) "Usage: <mac/alias> -<command1> <parameters...> -<command2>\n\
  \                                  <mac>: bluetooth mac address of bulb\n\
@@ -296,12 +299,15 @@ proc print_sem {} {
   append out [ print_measurement ]
   append out [ print_uptime ]
   append out [ print_consumption ]
+  append out [ print_avg_consumption ]
   for { set i 0 } { $i < 6 } { incr i } {
     append out [ print_scheduler $i ]
   }
   append out [ print_countdown ]
   append out [ print_overload ]
   append out [ print_standby ]
+  append out [ print_data_hours ]
+  append out [ print_data_minutes ]  
   puts $out
 
 }
@@ -427,6 +433,33 @@ proc current_datetime_str {} {
 proc current_time_str {} {
 
   return [ clock format [ clock seconds ] -format "%H:%M" ]
+
+}
+
+
+
+
+proc datetime_str { secs } {
+
+  return [ clock format $secs -format "%Y-%m-%d %H:%M:%S" ]
+
+}
+
+
+
+
+proc hour_in_year { datetime } {
+
+  set part [ split $datetime " " ]
+  set date [ lindex $datetime 0 ]
+  set time [ lindex $datetime 1 ]
+
+  set full_hours [ expr [ time_in_minutes $time ] / 60 ]
+
+  set _d [ clock scan $date -format %Y-%m-%d ]
+  set day_in_year [ clock format $_d -format %j -gmt true ]
+
+  return [ expr $full_hours + $day_in_year * 24 ]
 
 }
 
@@ -846,6 +879,11 @@ proc gatt_grab_notification_handle { notification_level } {
       # power-on consumption notification
       set notified [ expr $notified | [ parse_consumption $bytes ] ]
 
+    } elseif { $handle == $NOTIFY(cmd) && ( [ lindex $bytes 0 ] == $REQ_COMMAND(data_hour) || [ lindex $bytes 0 ] == $REQ_COMMAND(data_minute) ) } {
+
+      # recorded data notification
+      set notified [ expr $notified | [ parse_data $bytes ] ]
+
     } else {
 
       log "WARNING:\tUnknown notification received, 0x$buffer"
@@ -986,44 +1024,6 @@ proc req_subscribe_notification { handle s } {
   }
 
 }
-
-
-
-
-proc req_scheduler { i } {
-
-  global HANDLE
-  global NOTIFIED
-  global REQ_COMMAND
-  global sem
-
-  set bytes {}
-  set i [ expr $i % 6 ]
-
-  log "INFO:\tRequest scheduler [ expr $i + 1 ]"
-
-  # Byte 1: Scheduler command
-  lappend bytes $REQ_COMMAND(scheduler)
-
-  # Byte 2: id of scheduler
-  lappend bytes $i
-
-  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(none) ]
-
-  if { $rv != -1 } {
-
-    log "INFO:\tSEM successfully switched"
-    set sem(power) $s
-    return 0
-
-  } else {
-
-    log "ERROR:\tSwitching SEM failed"
-    return -1
-  }
-
-}
-
 
 
 
@@ -1820,6 +1820,160 @@ proc print_consumption {} {
 
 
 
+proc print_avg_consumption {} {
+
+  global sem
+
+  set out ""
+
+  if { $sem(consumption) != -1 && $sem(uptime) != -1 } {
+    set _s [ expr round( 10 * $sem(consumption) / ( $sem(uptime) / 60.0 ) ) / 10.0 ]
+    append out "\tAvg. consumption: $_s W\n"
+    append out "\n"
+  }
+
+  return $out
+
+}
+
+
+
+
+proc req_data { scope shift records } {
+
+  global HANDLE
+  global NOTIFIED
+  global REQ_COMMAND
+  global sem
+
+  set bytes {}
+
+  log "INFO:\tRequest recorded data"
+
+  # Byte 1: command for requesting recorded hours or minutes
+  if { $scope == $REQ_COMMAND(data_hour) } {
+
+    lappend bytes $REQ_COMMAND(data_hour)
+
+  } else {
+
+    lappend bytes $REQ_COMMAND(data_minute)
+
+  }
+
+  # Byte 2 and 3: shift records to past
+  lappend bytes [ expr $shift & 255 ]
+  lappend bytes [ expr $shift >> 8 ]
+
+  # Byte 4: records to read (max. 8)
+  if { $records > 8 } {
+    set records 8
+  }
+  lappend bytes $records
+
+  set rv [ gatt_char_write_req $HANDLE(cmd) $bytes $NOTIFIED(data) ]
+  if { [ expr $rv & $NOTIFIED(data) ] == $NOTIFIED(data) } {
+
+    log "INFO:\tRecorded data successfully requested"
+    return 0
+
+  } else {
+
+    log "ERROR:\tReceiving recorded data failed"
+    return -1
+
+  }
+
+}
+
+
+
+
+proc parse_data { bytes } {
+
+  global REQ_COMMAND
+  global NOTIFIED
+
+  global data_per_hour
+  global data_per_minute
+
+  set time_in_minutes [ expr [ clock seconds ] / 60 ]
+
+  if { [ llength $bytes ] < 3 } {
+
+    return 0
+
+  }
+
+  # Byte 1 + 2: Index of first record
+  set record [ expr [ lindex $bytes 1 ] + [ lindex $bytes 2 ] * 255 ]
+
+  # Byte 3: Count of records
+  set records [ lindex $bytes 3 ]
+
+  for { set i 0 } { $i < $records } { incr i } {
+
+    set d [ expr ( [ lindex $bytes [ expr $i * 2 + 4 ] ] + [ lindex $bytes [ expr $i * 2 + 5 ] ] * 255 ) / 10.0 ]
+
+    if { [ lindex $bytes 0 ] == $REQ_COMMAND(data_hour) } {
+
+      set index [ expr $time_in_minutes / 60 - $record - $records + $i ]
+      set data_per_hour($index) $d
+
+    } elseif { [ lindex $bytes 0 ] == $REQ_COMMAND(data_minute) } {
+
+      set index [ expr $time_in_minutes - $record - $records + $i ]
+      set data_per_minute($index) $d
+
+    }
+
+  }
+
+  return $NOTIFIED(data)
+
+}
+
+
+
+
+proc print_data_hours {} {
+
+  global data_per_hour
+
+  set out ""
+
+  foreach d [ lsort [ array names data_per_hour ] ] {
+    
+    append out "[ datetime_str [ expr $d * 3600 ] ]\t$data_per_hour($d)\tWh\n"
+
+  }
+
+  return $out
+
+}
+
+
+
+
+proc print_data_minutes {} {
+
+  global data_per_minute
+
+  set out ""
+
+  foreach d [ lsort [ array names data_per_minute ] ] {
+    
+    append out "[ datetime_str [ expr $d * 3600 ] ]\t$data_per_minute($d)\tWh\n"
+
+  }
+
+  return $out
+}
+
+
+
+
+
 proc reset_data {} {
 
   global HANDLE
@@ -1905,6 +2059,8 @@ proc do_command { command } {
   global INIT
   global sem
   global verbose
+  global data_per_hour
+  global data_per_minute
 
   switch -regexp $command {
     ^sync$ {
@@ -2183,6 +2339,62 @@ proc do_command { command } {
         capture_countdown
       }
     }
+    ^data\ hours\ .+$ {
+      # -data hour <from:MM-DD|hh> \[<to:MM-DD|+hh>\]
+
+      # hour in year
+      set current_hour_in_year [ hour_in_year [ current_datetime_str ] ]
+
+      # request starting hour
+      set request_starting_hour [ expr $current_hour_in_year - 2000 ]
+
+      init $INIT(subscribe_cmd)
+
+      set chunks [ expr ( $current_hour_in_year - $request_starting_hour ) / 8 ]
+      set remains [ expr ( $current_hour_in_year - $request_starting_hour ) % 8 ]
+
+      for { set i 0 } { $i <= $chunks } { incr i } {
+
+        set current_size [ array size data_per_hour ]
+
+        req_data 1 [ expr $i * 8 ] [ expr $i == $chunks ? $remains : 8 ]
+
+        if { [ array size data_per_hour ] == $current_size } {
+
+          break
+
+        }
+
+      }
+
+    }
+    ^data\ mins\ .+$ {
+      # -data min <hh:mm|-mm> <hh:mm|+mm>  - query recorded data on minute base, max. 4h in the past
+      # hour in year
+      set current_hour_in_year [ hour_in_year [ current_datetime_str ] ]
+
+      # request starting hour
+      set request_starting_hour [ expr $current_hour_in_year - 2000 ]
+
+      init $INIT(subscribe_cmd)
+
+      set chunks [ expr ( $current_hour_in_year - $request_starting_hour ) / 8 ]
+      set remains [ expr ( $current_hour_in_year - $request_starting_hour ) % 8 ]
+
+      for { set i 0 } { $i <= $chunks } { incr i } {
+
+        set current_size [ array size data_per_hour ]
+
+        req_data 2 [ expr $i * 8 ] [ expr $i == $chunks ? $remains : 8 ]
+
+        if { [ array size data_per_hour ] == $current_size } {
+
+          break
+
+        }
+
+      }      
+    }    
     ^reset$ {
 
       init 0

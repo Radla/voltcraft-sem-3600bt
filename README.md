@@ -217,8 +217,6 @@ In most cases the script won't print anything. If you want to print some output,
 $ ./vc-sem.exp Lam -print
 
         Mac:              20:CD:39:1F:EC:DE
-        Initialized:      no
-        Connected:        no
         Alias:            Lamp
 ```
 
@@ -232,8 +230,6 @@ If you want to see if the socket is turned on and what the current power consump
 $ ./vc-sem.exp Lam -measure -print
 
         Mac:              20:CD:39:1F:EC:DE
-        Initialized:      yes
-        Connected:        yes
         Alias:            Lamp
 
         Measurement:
@@ -255,8 +251,6 @@ First let's take a look at the current state of schedulers:
 $ ./vc-sem.exp Lam -scheduler 1 -print
 
         Mac:              20:CD:39:1F:EC:DE
-        Initialized:      yes
-        Connected:        yes
         Alias:            Lamp
 
         Scheduler 1:
@@ -275,8 +269,6 @@ Let's check all schedulers in order to find a slot that isn't used yet:
 $ ./vc-sem.exp Lam -scheduler -print
 
         Mac:              20:CD:39:1F:EC:DE
-        Initialized:      yes
-        Connected:        yes
         Alias:            Lamp
 
         Scheduler 1:
@@ -322,8 +314,6 @@ Ok, let's set the second scheduler for weekdays from Monday to Friday. The sched
 $ ./vc-sem.exp Lam -scheduler 2 on 07:00 off +20 _MTWTF_ -print
 
         Mac:              20:CD:39:1F:EC:DE
-        Initialized:      yes
-        Connected:        yes
         Alias:            Lamp
 
         Scheduler 2:
@@ -347,8 +337,6 @@ Let's take a look at the settings of scheduler 3:
 $ ./vc-sem.exp Lam -scheduler 3 -print
 
         Mac:              20:CD:39:1F:EC:DE
-        Initialized:      yes
-        Connected:        yes
         Alias:            Lamp
 
         Scheduler 3:
@@ -383,8 +371,6 @@ Let's ask for information about the countdown that we have started before:
 $ ./vc-sem.exp Lam -countdown -print
 
         Mac:              20:CD:39:1F:EC:DE
-        Initialized:      yes
-        Connected:        yes
         Alias:            Lamp
 
         Measurement:
@@ -419,8 +405,6 @@ You can define an action in case that the smart energy meter exceeds a limit in 
 $ ./vc-sem.exp Lam -overload 1000 off -print
 
         Mac:              20:CD:39:1F:EC:DE
-        Initialized:      yes
-        Connected:        yes
         Alias:            Lamp
 
         Overload:
@@ -434,8 +418,6 @@ If you also want to hear an acustic alarm then add the _alarm_ parameter:
 $ ./vc-sem.exp Lam -overload 1000 off alarm -print
 
         Mac:              20:CD:39:1F:EC:DE
-        Initialized:      yes
-        Connected:        yes
         Alias:            Lamp
 
         Overload:
@@ -449,8 +431,6 @@ If you just want to get a visual warning - led blinks red - then it goes like th
 $ ./vc-sem.exp Lam -overload 1000 warn -print
 
         Mac:              20:CD:39:1F:EC:DE
-        Initialized:      yes
-        Connected:        yes
         Alias:            Lamp
 
         Overload:
@@ -492,8 +472,6 @@ If you want to take and print a single measurement you just have to run the scri
 $ ./vc-sem.exp Lamp -measure -print
 
         Mac:              20:CD:39:1F:EC:DE
-        Initialized:      yes
-        Connected:        yes
         Alias:            Lamp
 
         Measurement:
@@ -542,8 +520,6 @@ You can request this time by using the _uptime_ command:
 $ vc-sem Ent -uptime -print
 
         Mac:              D0:39:72:BB:AE:EC
-        Initialized:      yes
-        Connected:        yes
         Alias:            Entertainment
 
         Power-on uptime:  2 days, 20:38
@@ -558,8 +534,6 @@ The smart energy meter records the overall power consumption. This can be querie
 $ vc-sem Ent -consumption -print
 
         Mac:              D0:39:72:BB:AE:EC
-        Initialized:      yes
-        Connected:        yes
         Alias:            Entertainment
 
         Power-on consumption:  0.109 kWh
