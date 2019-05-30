@@ -150,14 +150,15 @@ set HELP(total) "\
   --total                            - query power-on uptime and consumption"
 
 set HELP(data) "\
-  --data hour \[<MM-DD|-d>\] \[<MM-DD|+d>\]\n\
-\                                   - query data on hourly base, max. 90 days in the past\n\
-\                                     (optiona) from-date or hours from now in the past\n\
-\                                     (optional) to-date or hours after from-date\n\
+  --data hour \[all|<MM-DD|-d>\] \[<MM-DD|+d>\]\n\
+\                                   - query data on hourly base, max. 89 days in the past\n\
+\                                     (optional) from-date or days back from now or all data\n\
+\                                     (optional) to-date or days after from-date\n\
 \n\
-  --data min \[<hh|-h>\] \[<hh|+h>\]     - query data on minute base, max. 48h in the past\n\
-\                                     (optional) from-hour or hours from now in the past\n\
-\                                     (optional) to-hour or hours after from-hour\n\
+  --data min \[<all|-hh>\] \[<+hh>\]\n\
+\                                   - query data on minute base, max. 48h in the past\n\
+\                                     (optional) hours back from now or all data\n\
+\                                     (optional) hours after from\n\
 \                                     Note: Periods longer than 48h take very long time!"
 
 set HELP(reset) "\
@@ -455,24 +456,6 @@ proc datetime_str { secs } {
 
 
 
-proc hour_in_year { datetime } {
-
-  set part [ split $datetime " " ]
-  set date [ lindex $datetime 0 ]
-  set time [ lindex $datetime 1 ]
-
-  set full_hours [ expr [ time_in_minutes $time ] / 60 ]
-
-  set _d [ clock scan $date -format %Y-%m-%d ]
-  set day_in_year [ clock format $_d -format %j -gmt true ]
-
-  return [ expr $full_hours + $day_in_year * 24 ]
-
-}
-
-
-
-
 proc time_in_minutes { time } {
 
   set part [ split $time ":" ]
@@ -481,6 +464,24 @@ proc time_in_minutes { time } {
   set m [ expr $hours * 60 + $minutes ]
 
   return $m
+
+}
+
+
+
+
+proc time_offset {} {
+
+  return [ clock scan "1970-01-01 00:00:00" -format "%Y-%m-%d %H:%M:%S" ]
+
+}
+
+
+
+
+proc time_in_secs { s } {
+
+  return [ expr [ clock scan $s -format "%Y-%m-%d %H:%M:%S" ] - [ time_offset ] ]
 
 }
 
@@ -1831,7 +1832,7 @@ proc print_avg_consumption {} {
 
   set out ""
 
-  if { $sem(consumption) != -1 && $sem(uptime) != -1 } {
+  if { $sem(consumption) != -1 && $sem(uptime) > 0 } {
     set _s [ expr round( 10 * $sem(consumption) / ( $sem(uptime) / 60.0 ) ) / 10.0 ]
     append out "\tAvg. consumption: $_s W\n"
   }
@@ -2352,25 +2353,77 @@ proc do_command { command } {
         capture_countdown
       }
     }
-    ^data\ hour\ .+$ {
-      # -data hourly all|today|<days>
+    ^data\ hour.*$ {
 
-      # hour in year
-      set current_hour_in_year [ hour_in_year [ current_datetime_str ] ]
+      set now [ time_in_secs [ current_datetime_str ] ]
 
-      # request starting hour
-      set request_starting_hour [ expr $current_hour_in_year - 2000 ]
+      # last 24h
+      if { [ llength $command ] == 2 } {
+        
+        set from [ expr ( $now / 3600 - 24 ) * 3600 ]
+        set to   [ expr $now / 3600 * 3600 ]
 
+      ## all data
+      } elseif { [ llength $command ] == 3 && [ lindex $command 2 ] == "all" } {
+
+        set from [ expr $now - 7689600 ]
+        set to   [ expr $now / 3600 * 3600 ]
+
+      } else {
+        
+        check_command $command 2 "data" {^data hour (-[0-9]+|2[0-9]{3}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]))( (\+[0-9]+|(2[0-9]{3}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]))))?$}
+        
+        if { [ string range [ lindex $command 2 ] 0 0 ] == "-" } {
+
+          # from-date -n days ago
+          set from [ expr $now / 86400 * 86400 + 86400 * [ lindex $command 2 ] + [ time_offset ] ]
+
+        } else {
+          # specific from-date
+          set from [ time_in_secs "[ lindex $command 2 ] 00:00:00" ]
+
+        }
+        
+        if { [ llength $command ] == 4 && [ string range [ lindex $command 3 ] 0 0 ] == "+" } {
+
+          # to-date is +n days after from-date
+          set to [ expr $from + 86400 * [ lindex $command 3 ] ]
+
+        } elseif { [ llength $command ] == 4 } {
+
+          # specific to date
+          set to [ expr [ time_in_secs "[ lindex $command 3 ] 00:00:00" ] + 86400 ]
+
+        } else {
+
+          # exactly day of from-date 
+          set to [ expr $from + 86400 ]
+
+        }
+        
+      }
+
+      # check period
+      if { $to - $now > 0 } {
+        puts "End of period must before one hour ago."
+        exit 1
+      } elseif { $now - $from > 7689600 } {
+        puts "Begin is out of range of 89 days."
+        exit 1
+      }
+
+      # let's go
       init $INIT(subscribe_cmd)
 
-      set chunks [ expr ( $current_hour_in_year - $request_starting_hour ) / 8 ]
-      set remains [ expr ( $current_hour_in_year - $request_starting_hour ) % 8 ]
+      set chunks  [ expr ( $to - $from ) / 3600 / 8 ]
+      set remains [ expr ( $to - $from ) / 3600 % 8 ]
+      set shift   [ expr ( $now - $to ) / 3600 ]
 
       for { set i 0 } { $i <= $chunks } { incr i } {
 
         set current_size [ array size data_per_hour ]
 
-        req_data 1 [ expr $i * 8 ] [ expr $i == $chunks ? $remains : 8 ]
+        req_data 1 [ expr $i * 8 + $shift ] [ expr $i == $chunks ? $remains : 8 ]
 
         if { [ array size data_per_hour ] == $current_size } {
 
@@ -2381,24 +2434,64 @@ proc do_command { command } {
       }
 
     }
-    ^data\ min\ .+$ {
-      # -data mins
-      # hour in year
-      set current_hour_in_year [ hour_in_year [ current_datetime_str ] ]
+    ^data\ min.*$ {
+      
+      set now [ time_in_secs [ current_datetime_str ] ]
 
-      # request starting hour
-      set request_starting_hour [ expr $current_hour_in_year - 2 * 24 * 60 ]
+      # last hour
+      if { [ llength $command ] == 2 } {
+        
+        set from [ expr ( $now / 60 - 60 ) * 60 ]
+        set to   [ expr $now / 60 * 60 ]
 
+      ## all data
+      } elseif { [ llength $command ] == 3 && [ lindex $command 2 ] == "all" } {
+
+        set from [ expr $now - 172800 ]
+        set to   [ expr $now / 60 * 60 ]
+
+      } else {
+        
+        check_command $command 2 "data" {^data min -[0-9]+( \+[0-9]+)?$}
+        
+        # from -n hours ago
+        set from [ expr ( $now / 60 + 60 * [ lindex $command 2 ] ) * 60 ]
+        
+        if { [ llength $command ] == 4 } {
+
+          # to is +n hours after from
+          set to [ expr $from + 3600 * [ lindex $command 3 ] ]
+
+        } else {
+
+          # exactly day of from-date 
+          set to [ expr $from + 3600 ]
+
+        }
+        
+      }
+
+      # check period
+      if { $to - $now > 0 } {
+        puts "End of period must be one minute before now."
+        exit 1
+      } elseif { $now - $from > 172800 } {
+        puts "Begin is out of range of 48 hours."
+        exit 1
+      }
+
+      # let's go
       init $INIT(subscribe_cmd)
 
-      set chunks [ expr ( $current_hour_in_year - $request_starting_hour ) / 8 ]
-      set remains [ expr ( $current_hour_in_year - $request_starting_hour ) % 8 ]
+      set chunks  [ expr ( $to - $from ) / 60 / 8 ]
+      set remains [ expr ( $to - $from ) / 60 % 8 ]
+      set shift   [ expr ( $now - $to ) / 60 ]
 
       for { set i 0 } { $i <= $chunks } { incr i } {
 
         set current_size [ array size data_per_minute ]
 
-        req_data 2 [ expr $i * 8 ] [ expr $i == $chunks ? $remains : 8 ]
+        req_data 2 [ expr $i * 8 + $shift ] [ expr $i == $chunks ? $remains : 8 ]
 
         if { [ array size data_per_minute ] == $current_size } {
 
@@ -2407,6 +2500,7 @@ proc do_command { command } {
         }
 
       }
+
     }
     ^header\ data$ {
 

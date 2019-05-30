@@ -67,116 +67,134 @@ D0:39:72:BB:AE:EC Entertainment
 
 This enables you to call the script like this
 ```
-$ ./vc-sem.exp Lamp -sync
+$ ./vc-sem.exp Lamp --sync
 ```
 
 instead of 
 ```
-$ ./vc-sem.exp 20:CD:39:1F:EC:DE -sync
+$ ./vc-sem.exp 20:CD:39:1F:EC:DE --sync
 ```
 
 **Note**: 
 You don't even have to write the whole alias. This works as well:
 ```
-$ ./vc-sem.exp Lam -sync
+$ ./vc-sem.exp Lam --sync
 ```
 
 ## Getting help
 
 In order to get an overview of the full feature set enter the following:
 ```
-$ ./vc-sem.exp -help
-Usage: <mac/alias> -<command1> <parameters...> -<command2>
+$ ./vc-sem.exp ---help
+Usage: <mac/alias> --<command1> <parameters...> --<command2>
                                    <mac>: bluetooth mac address of bulb
-                                   <alias>: you can use alias instead of mac address
-                                            after you have run setup (see setup)
+                                   <alias>: you can use alias instead of mac address, see ~/.known_sems 
                                    <command>: For command and parameters
 
 
 Basic commands:
 
- -on                                - turn on socket
- -off                               - turn off socket
- -toggle                            - toggle socket
+ --on                               - turn on socket
+ --off                              - turn off socket
+ --toggle                           - toggle socket
+ --status                           - get status incl. voltage, ampere, watts, power factor and frequency
 
 Scheduler commands:
 
- -scheduler <n> <on|off> <hh:mm|+mm> <on|off> <hh:mm|+mm> [<smtwtfs>]
+ --scheduler <n> <on|off> <hh:mm|+mm> <on|off> <hh:mm|+mm> [<smtwtfs>]
                                       n         - given scheduler where n is 1 - 6
                                       on|off    - action of scheduler at start
                                       hh:mm|+mm - start time or minutes from now
                                       on|off    - action of scheduler at end
-                                      hh:mm|+mm - end time or minutes after start time, at least 1 minute
+                                      hh:mm|+mm - end time or minutes after start time, at least 1 minute 
                                       smtwtfs   - (optional) weekdays, use capital letters to set, e.g. sMTWTFs
                                                   use the word "sameday" for same weekdays like today
                                                   if weekdays are missing then scheduler runs only once
 
- -scheduler <n> <set|unset|reset>   - activate, deactivate or reset given scheduler
-
- -scheduler <n>                     - query status of given scheduler where n is 1 - 6
-
- -scheduler reset                   - resets all schedulers, i.e. 1 - 6
-
- -scheduler                         - query status of all schedulers, i.e. 1 - 6
+ --scheduler <n> <set|unset|reset>  - activate, deactivate or reset given scheduler
+ 
+ --scheduler <n>                    - query status of given scheduler where n is 1 - 6
+ 
+ --scheduler reset                  - resets all schedulers, i.e. 1 - 6
+ 
+ --scheduler                        - query status of all schedulers, i.e. 1 - 6
 
 Countdown commands:
 
- -countdown <on|off> <hh:mm|+mm>    - set countdown action and runtime
+ --countdown <on|off> <hh:mm|+mm>   - set countdown action and runtime
                                       on|off - action of countdown
                                       hh:mm  - given ETA
                                       +mm    - given runtime in minutes
-
- -countdown <reset>                 - reset countdown
-
- -countdown                         - query status of countdown
+ 
+ --countdown <reset>                - reset countdown
+ 
+ --countdown                        - query status of countdown
 
 Power commands:
 
- -overload <watts> <warn|off> <alarm>
+ --overload <watts> <warn|off> <alarm>
                                     - set overload with high-water-mark and actions
                                       watts - high-water-mark, max. 3699, e.g. 3699 for 3699W
                                       warn  - led blinks when overloaded
                                       off   - turn socket off if overloaded
                                       alarm - (optional) alarm if overloaded
-
- -overload off                      - turn overload off
-
- -overload                          - query overload settings
-
- -standby <watts> <warn|off>        - set standby mode if consumption is below water-mark
+ 
+ --overload off                     - turn overload off
+ 
+ --overload                         - query overload settings
+ --standby <watts> <warn|off>       - set standby mode if consumption is below water-mark
                                       watts - low-water-mark, max. 30.00, e.g. 5.0 for 5.0W
                                       warn - led blinks when standby detected
                                       off  - auto turn off socket when standby detected
-
- -standby off                       - turn standby mode off
-
- -standby                           - query standby settings
+ 
+ --standby off                      - turn standby mode off
+ 
+ --standby                          - query standby settings
 
 Measurement commands:
 
- -measure                           - take and print measurement incl. voltage, ampere, watts, power factor and frequency
- -watch [<s>]                       - watch measurements, optional duration in seconds (use 0 for single), otherwise forever
+ --uptime                           - query power-on uptime
+ --consumption                      - query power-on consumption
+ --total                            - query power-on uptime and consumption
+
+ --measure [<s>]                    - take measurements, optional duration in seconds (use 0 for single), otherwise forever
+
+ --data hour [<MM-DD|-d>] [<MM-DD|+d>]
+                                    - query data on hourly base, max. 90 days in the past
+                                      (optiona) from-date or hours from now in the past
+                                      (optional) to-date or hours after from-date
+ 
+ --data min [<hh|-h>] [<hh|+h>]     - query data on minute base, max. 48h in the past
+                                      (optional) from-hour or hours from now in the past
+                                      (optional) to-hour or hours after from-hour
+                                      Note: Periods longer than 48h take very long time!
+
+ --reset                            - reset all recorded data
+
+ --header <measure|data>            - print header line for measurements or data
 
 Other commands:
 
- -print                             - print gathered information
- -sync                              - synchronize time
- -sleep <n>                         - pause processing for n seconds
- -verbose                           - print information about processing
- -debug                             - print actions in gatttool
- -help [<command>]                  - print general help or help for specific command
+ --device                           - request device meta data
+ --sync                             - synchronize time
+ --print                            - print gathered information
+ --dump                             - request all information from device
+ --sleep <n>                        - pause processing for n seconds
+ --verbose                          - print information about processing
+ --debug                            - print actions in gatttool
+ --help [<command>]                 - print general help or help for specific command
 ```
 
 You get specific help for a command if you ask for it explicitly:
 ```
-$ ./vc-sem.exp -help toggle
+$ ./vc-sem.exp --help toggle
 Usage: <mac/alias> -<command1> <parameters...> >-<command2>
                                    <mac>: bluetooth mac address of bulb
                                    <alias>: you can use alias instead of mac address
                                             after you have run setup (see setup)
                                    <command>: For command and parameters
 
- -toggle                            - toggle socket
+ --toggle                            - toggle socket
 ```
 
 
@@ -186,19 +204,19 @@ Usage: <mac/alias> -<command1> <parameters...> >-<command2>
 
 You can turn on the socket as follows:
 ```
-$ ./vc-sem.exp Lamp -on
+$ ./vc-sem.exp Lamp --on
 ```
 
 Note that there isn't any feedback. 
 
 You can turn the device off by entering this:
 ```
-$ ./vc-sem.exp Lamp -off
+$ ./vc-sem.exp Lamp --off
 ```
 
 If you want to toggle the switch you use the _toggle_ command:
 ```
-$ ./vc-sem.exp Lamp -toggle
+$ ./vc-sem.exp Lamp --toggle
 ```
 
 ### Queueing commands / sleep command
@@ -206,7 +224,7 @@ $ ./vc-sem.exp Lamp -toggle
 Since it takes some time to establish the bluetooth connection each time you start the script, I have introduced command queing. Each commands starts with a dash. In this example I queue 7 commands. The _sleep_ commands pauses processing before the next command starts. 
 
 ```
-$ ./vc-sem.exp Lamp -on -sleep 1 -toggle -sleep 1 -toggle -sleep 1 -off
+$ ./vc-sem.exp Lamp --on --sleep 1 --toggle --sleep 1 --toggle --sleep 1 --off
 ```
 
 ### Print gathered information
@@ -214,7 +232,7 @@ $ ./vc-sem.exp Lamp -on -sleep 1 -toggle -sleep 1 -toggle -sleep 1 -off
 In most cases the script won't print anything. If you want to print some output, e.g. information that has been gathered by previous commands, you must tell the script to do so explicitly. 
 
 ```
-$ ./vc-sem.exp Lam -print
+$ ./vc-sem.exp Lam --print
 
         Mac:              20:CD:39:1F:EC:DE
         Alias:            Lamp
@@ -227,10 +245,7 @@ In this example there are just basic information available since we haven't real
 If you want to see if the socket is turned on and what the current power consumption is, you must ask for a measurement first and print it afterwards:
 
 ```
-$ ./vc-sem.exp Lam -measure -print
-
-        Mac:              20:CD:39:1F:EC:DE
-        Alias:            Lamp
+$ ./vc-sem.exp Lam --measure --print
 
         Measurement:
           Power:          on
@@ -248,10 +263,7 @@ The socket has 6 schedulers that can be programmed once or per weekday.
 
 First let's take a look at the current state of schedulers:
 ```
-$ ./vc-sem.exp Lam -scheduler 1 -print
-
-        Mac:              20:CD:39:1F:EC:DE
-        Alias:            Lamp
+$ ./vc-sem.exp Lam --scheduler 1 --print
 
         Scheduler 1:
           Active:         on
@@ -266,10 +278,7 @@ The scheduler 1 is already set. It runs on Sunday and Saturday.
 
 Let's check all schedulers in order to find a slot that isn't used yet:
 ```
-$ ./vc-sem.exp Lam -scheduler -print
-
-        Mac:              20:CD:39:1F:EC:DE
-        Alias:            Lamp
+$ ./vc-sem.exp Lam --scheduler --print
 
         Scheduler 1:
           Active:         on
@@ -311,10 +320,7 @@ $ ./vc-sem.exp Lam -scheduler -print
 Ok, let's set the second scheduler for weekdays from Monday to Friday. The scheduler should turn my lamp on at 7:00 a.m. After 20 minutes it should turn off. I also want to print the result- The command looks like this:
 
 ```
-$ ./vc-sem.exp Lam -scheduler 2 on 07:00 off +20 _MTWTF_ -print
-
-        Mac:              20:CD:39:1F:EC:DE
-        Alias:            Lamp
+$ ./vc-sem.exp Lam --scheduler 2 on 07:00 off +20 _MTWTF_ --print
 
         Scheduler 2:
           Active:         on
@@ -328,16 +334,13 @@ Instead of setting the end time of 07:20 a.m. I have used an offset of +20 minut
 You can also use an offset for the start time. For example you can start a scheduler that runs in 5 Minutes from now for one hour _once today_ like this:
 
 ```
-$ ./vc-sem.exp Lam -scheduler 3 on +5 off +60
+$ ./vc-sem.exp Lam --scheduler 3 on +5 off +60
 ```
 
 Let's take a look at the settings of scheduler 3:
 
 ```
-$ ./vc-sem.exp Lam -scheduler 3 -print
-
-        Mac:              20:CD:39:1F:EC:DE
-        Alias:            Lamp
+$ ./vc-sem.exp Lam --scheduler 3 --print
 
         Scheduler 3:
           Active:         on
@@ -349,29 +352,26 @@ $ ./vc-sem.exp Lam -scheduler 3 -print
 In order to reset a specific scheduler or all schedulers run:
 
 ``` 
-$ ./vc-sem.exp Lam -scheduler 3 reset
-$ ./vc-sem.exp Lam -scheduler reset
+$ ./vc-sem.exp Lam --scheduler 3 reset
+$ ./vc-sem.exp Lam --scheduler reset
 ```
 
 ### Countdown
 
 The socket has a timer. You can set it with an ease like this:
 ```
-$ ./vc-sem.exp Lam -countdown off +5
+$ ./vc-sem.exp Lam --countdown off +5
 ```
 
 This activates a countdown timer which runs for 5 minutes and then turns the socket off. You can also specify a _time of arrival (ETA)_ like this:
 
 ```
-$ ./vc-sem.exp Lam -countdown off 09:45
+$ ./vc-sem.exp Lam --countdown off 09:45
 ```
 
 Let's ask for information about the countdown that we have started before:
 ```
-$ ./vc-sem.exp Lam -countdown -print
-
-        Mac:              20:CD:39:1F:EC:DE
-        Alias:            Lamp
+$ ./vc-sem.exp Lam --countdown --print
 
         Measurement:
           Power:          on
@@ -390,7 +390,7 @@ $ ./vc-sem.exp Lam -countdown -print
 
 Enter the following in order to stop the running countdown:
 ```
-$ ./vc-sem.exp Lam -countdown reset
+$ ./vc-sem.exp Lam --countdown reset
 ```
 
 ## Power commands
@@ -402,10 +402,7 @@ The smart energy meter monitors power consumption continuously. It can perform a
 You can define an action in case that the smart energy meter exceeds a limit in terms of power consumption. In this example the socket turn off immediately in case that power consumption gets higher that 1000 Watts:
 
 ```
-$ ./vc-sem.exp Lam -overload 1000 off -print
-
-        Mac:              20:CD:39:1F:EC:DE
-        Alias:            Lamp
+$ ./vc-sem.exp Lam --overload 1000 off --print
 
         Overload:
           Threshold:      1000 W
@@ -415,10 +412,7 @@ $ ./vc-sem.exp Lam -overload 1000 off -print
 
 If you also want to hear an acustic alarm then add the _alarm_ parameter:
 ```
-$ ./vc-sem.exp Lam -overload 1000 off alarm -print
-
-        Mac:              20:CD:39:1F:EC:DE
-        Alias:            Lamp
+$ ./vc-sem.exp Lam --overload 1000 off alarm --print
 
         Overload:
           Threshold:      1000 W
@@ -426,12 +420,9 @@ $ ./vc-sem.exp Lam -overload 1000 off alarm -print
           Alarm:          yes
 ```
 
-If you just want to get a visual warning - led blinks red - then it goes like this:
+If you just want to get a visual warning -- led blinks red -- then it goes like this:
 ```
-$ ./vc-sem.exp Lam -overload 1000 warn -print
-
-        Mac:              20:CD:39:1F:EC:DE
-        Alias:            Lamp
+$ ./vc-sem.exp Lam --overload 1000 warn --print
 
         Overload:
           Threshold:      1000 W
@@ -441,7 +432,7 @@ $ ./vc-sem.exp Lam -overload 1000 warn -print
 
 By entering this you turn off overload:
 ```
-$ ./vc-sem.exp Lam -overload off
+$ ./vc-sem.exp Lam --overload off
 ```
 
 ### Standby mode
@@ -449,17 +440,17 @@ $ ./vc-sem.exp Lam -overload off
 You can also set an action if the power consumption falls unter a given limit. If you just want to be warned (led blinks), e.g. in case that consumption falls under 3 Watts, enter the following:
 
 ```
-$ ./vc-sem.exp Lam -standby 3 warn
+$ ./vc-sem.exp Lam --standby 3 warn
 ```
 
 You can also specify that the socket turn off immediately like this:
 ```
-$ ./vc-sem.exp Lam -standby 2 off
+$ ./vc-sem.exp Lam --standby 2 off
 ```
 
 In order to turn off standby mode enter the following:
 ```
-$ ./vc-sem.exp Lam -standby off
+$ ./vc-sem.exp Lam --standby off
 ```
 
 ## Measurements
@@ -469,10 +460,7 @@ $ ./vc-sem.exp Lam -standby off
 If you want to take and print a single measurement you just have to run the script like this:
 
 ```
-$ ./vc-sem.exp Lamp -measure -print
-
-        Mac:              20:CD:39:1F:EC:DE
-        Alias:            Lamp
+$ ./vc-sem.exp Lamp --status --print
 
         Measurement:
           Power:          off
@@ -486,27 +474,18 @@ $ ./vc-sem.exp Lamp -measure -print
 
 ### Realtime monitoring
 
-The _watch_ command captures the power data for a given period or infinitely. This monitors the power consumption for 5 seconds:
+The _measure_ command captures the power data for a given period or infinitely. This monitors the power consumption for 5 seconds:
 ```
-$ ./vc-sem.exp Lamp -watch 5
-2019-05-25 11:41:40;1;1;237.7;0.035;4.322;49.99;0.514
-2019-05-25 11:41:41;1;1;237.6;0.035;4.304;49.99;0.512
-2019-05-25 11:41:42;1;1;237.7;0.035;4.306;49.99;0.513
-2019-05-25 11:41:43;1;1;237.7;0.035;4.317;49.99;0.514
+$ ./vc-sem.exp Lamp --header measure --measure 5
+Timestamp       Power   Countdown       Volt (V)        Ampere (A)      Watt (W)        Frequency (Hz)  Power factor
+2019-05-30 11:33:50     1       0       235.8   0.354   41.54   49.99   0.497
+2019-05-30 11:33:51     1       0       235.8   0.346   40.79   49.98   0.498
+2019-05-30 11:33:52     1       0       235.8   0.349   41.02   49.99   0.498
+2019-05-30 11:33:53     1       0       235.9   0.341   40.07   49.98   0.498
+2019-05-30 11:33:54     1       0       235.9   0.344   40.28   49.99   0.495
 ```
 
-Note that the _watch_ command directly prints a csv record. If you have left out the period, here "5" for 5 seconds, it runs forever. You can stop it by pressing CTRL-C
-
-Each record has the following information:
-1. Column: Timestamp
-1. Column: Power state, 1 = on, 0 = off
-1. Column: Countdown state, 1 = running, 0 = off
-1. Column: Volt (V)
-1. Column: Ampere (A)
-1. Column: Watts (W)
-1. Column: Frequency (Hz)
-1. Column: Power factor (whatever this means)
-
+Note that the _meausure_ command directly prints a csv record. If you have left out the period, here "5" for 5 seconds, it runs forever. You can stop it by pressing CTRL-C
 
 ## Request recorded data
 
@@ -517,10 +496,7 @@ The smart energy meter records the uptime - the time when the socket is turned o
 You can request this time by using the _uptime_ command:
 
 ```
-$ vc-sem Ent -uptime -print
-
-        Mac:              D0:39:72:BB:AE:EC
-        Alias:            Entertainment
+$ vc-sem Ent --uptime --print
 
         Power-on uptime:  2 days, 20:38
 ```
@@ -531,19 +507,24 @@ $ vc-sem Ent -uptime -print
 The smart energy meter records the overall power consumption. This can be queried like this:
 
 ```
-$ vc-sem Ent -consumption -print
-
-        Mac:              D0:39:72:BB:AE:EC
-        Alias:            Entertainment
+$ vc-sem Ent --consumption --print
 
         Power-on consumption:  0.109 kWh
+```
+
+### Avg. consumption
+```
+$ ./vc-sem.exp Ent --total --print
+        Uptime:           4 days, 22:23
+        Consumption:      3.912 kWh
+        Avg. consumption: 33.0 W
 ```
 
 ### Reset recorded data
 
 If you want to reset all recorded data enter the following:
 ```
-$ vc-sem Ent -reset
+$ vc-sem Ent --reset
 ```
 
 ## More commands
@@ -553,23 +534,24 @@ $ vc-sem Ent -reset
 Actually time is synchronized each time you run a command. If you just want to synchronize the time from your PC with the smart meter call:
 
 ```
-$ ./vc-sem.exp Lamp -sync
+$ ./vc-sem.exp Lamp --sync
 ```
 
 ### Device information
 
 In order to get general device information you can request it by using the _device_ command:
 ```
-$ vc-sem La -device -print
-
-        Mac:              20:CD:39:1F:EC:DE
+$ ./vc-sem.exp Ent --device --print
+        Mac:              D0:39:72:BB:AE:EC
         Device name:      WiT Power Meter
         Device vendor:    Wittech Company Ltd.
         Device serial:    SN: 000000
         Device firmware:  F/W: V01.32
         Device hardware:  H/W: V00.00
-        Device software:  S/W: V00.11
-        Device secret:    0x030c
+        Device software:  S/W: V01.13
+        Device secret:    0x0353
+
+        Alias:            Entertainment
 ```
 
 ### Verbose
@@ -577,7 +559,7 @@ $ vc-sem La -device -print
 If you want to get some information what's going on while the script is running, add the verbose command. 
 
 ```
-$ ./vc-sem.exp Lamp -verbose -countdown off +10 -measure -off
+$ ./vc-sem.exp Lamp --verbose --countdown off +10 --measure --off
 INFO:   Try to connect to 20:CD:39:1F:EC:DE
 INFO:   Connected to 20:CD:39:1F:EC:DE
 INFO:   Sync SEM
@@ -618,7 +600,7 @@ INFO:   Disconnect from 20:CD:39:1F:EC:DE
 The script uses _gatttool_ from the _bluez_ bluetooth stack. You can also see the commands sent to gatttool by using the _debug_ command:
 
 ```
-$ ./vc-sem.exp Lamp -debug -countdown off +10 -measure -off
+$ ./vc-sem.exp Lamp --debug --countdown off +10 --measure --off
 [                 ][LE]> connect 20:CD:39:1F:EC:DE
 Attempting to connect to 20:CD:39:1F:EC:DE
 Connection successful
@@ -637,5 +619,5 @@ Characteristic value was written successfully
 
 The _dump_ command tries to gather all information from the device.
 ```
-$ ./vc-sem.exp La -dump -print
+$ ./vc-sem.exp La --dump --print
 ```
