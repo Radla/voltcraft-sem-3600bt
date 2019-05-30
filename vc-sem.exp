@@ -115,7 +115,7 @@ set sem(header_measure)        ""
 array set data_per_hour              {}
 array set data_per_minute            {}
 
-set HELP(usage) "Usage: <mac/alias> -<command1> <parameters...> -<command2>\n\
+set HELP(usage) "Usage: <mac/alias> --<command1> <parameters...> --<command2>\n\
  \                                  <mac>: bluetooth mac address of bulb\n\
  \                                  <alias>: you can use alias instead of mac address, see ~/.known_sems \n\
  \                                  <command>: For command and parameters"
@@ -258,7 +258,7 @@ proc help { argv } {
     }
     exit 1
   } elseif { [llength $argv ] < 1 || [ lindex $argv 0 ] == "--help" } {
-    puts "$HELP(usage)\n"
+    puts "$HELP(usage)"
     puts "\nBasic commands:\n"
     puts "$HELP(on)"
     puts "$HELP(off)"
@@ -2359,7 +2359,7 @@ proc do_command { command } {
 
       # last 24h
       if { [ llength $command ] == 2 } {
-        
+
         set from [ expr ( $now / 3600 - 24 ) * 3600 ]
         set to   [ expr $now / 3600 * 3600 ]
 
@@ -2370,9 +2370,9 @@ proc do_command { command } {
         set to   [ expr $now / 3600 * 3600 ]
 
       } else {
-        
+
         check_command $command 2 "data" {^data hour (-[0-9]+|2[0-9]{3}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]))( (\+[0-9]+|(2[0-9]{3}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]))))?$}
-        
+
         if { [ string range [ lindex $command 2 ] 0 0 ] == "-" } {
 
           # from-date -n days ago
@@ -2383,7 +2383,7 @@ proc do_command { command } {
           set from [ time_in_secs "[ lindex $command 2 ] 00:00:00" ]
 
         }
-        
+
         if { [ llength $command ] == 4 && [ string range [ lindex $command 3 ] 0 0 ] == "+" } {
 
           # to-date is +n days after from-date
@@ -2396,20 +2396,24 @@ proc do_command { command } {
 
         } else {
 
-          # exactly day of from-date 
+          # exactly day of from-date
           set to [ expr $from + 86400 ]
 
         }
-        
+
       }
 
       # check period
       if { $to - $now > 0 } {
+
         puts "End of period must before one hour ago."
         exit 1
+
       } elseif { $now - $from > 7689600 } {
+
         puts "Begin is out of range of 89 days."
         exit 1
+
       }
 
       # let's go
@@ -2435,12 +2439,12 @@ proc do_command { command } {
 
     }
     ^data\ min.*$ {
-      
+
       set now [ time_in_secs [ current_datetime_str ] ]
 
       # last hour
       if { [ llength $command ] == 2 } {
-        
+
         set from [ expr ( $now / 60 - 60 ) * 60 ]
         set to   [ expr $now / 60 * 60 ]
 
@@ -2451,12 +2455,12 @@ proc do_command { command } {
         set to   [ expr $now / 60 * 60 ]
 
       } else {
-        
+
         check_command $command 2 "data" {^data min -[0-9]+( \+[0-9]+)?$}
-        
+
         # from -n hours ago
         set from [ expr ( $now / 60 + 60 * [ lindex $command 2 ] ) * 60 ]
-        
+
         if { [ llength $command ] == 4 } {
 
           # to is +n hours after from
@@ -2464,20 +2468,24 @@ proc do_command { command } {
 
         } else {
 
-          # exactly day of from-date 
+          # exactly day of from-date
           set to [ expr $from + 3600 ]
 
         }
-        
+
       }
 
       # check period
       if { $to - $now > 0 } {
+
         puts "End of period must be one minute before now."
         exit 1
+
       } elseif { $now - $from > 172800 } {
+
         puts "Begin is out of range of 48 hours."
         exit 1
+
       }
 
       # let's go

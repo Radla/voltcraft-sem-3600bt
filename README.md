@@ -91,7 +91,6 @@ Usage: <mac/alias> --<command1> <parameters...> --<command2>
                                    <alias>: you can use alias instead of mac address, see ~/.known_sems 
                                    <command>: For command and parameters
 
-
 Basic commands:
 
  --on                               - turn on socket
@@ -159,14 +158,15 @@ Measurement commands:
 
  --measure [<s>]                    - take measurements, optional duration in seconds (use 0 for single), otherwise forever
 
- --data hour [<MM-DD|-d>] [<MM-DD|+d>]
-                                    - query data on hourly base, max. 90 days in the past
-                                      (optiona) from-date or hours from now in the past
-                                      (optional) to-date or hours after from-date
+ --data hour [all|<MM-DD|-d>] [<MM-DD|+d>]
+                                    - query data on hourly base, max. 89 days in the past
+                                      (optional) from-date or days back from now or all data
+                                      (optional) to-date or days after from-date
  
- --data min [<hh|-h>] [<hh|+h>]     - query data on minute base, max. 48h in the past
-                                      (optional) from-hour or hours from now in the past
-                                      (optional) to-hour or hours after from-hour
+ --data min [<all|-hh>] [<+hh>]
+                                    - query data on minute base, max. 48h in the past
+                                      (optional) hours back from now or all data
+                                      (optional) hours after from
                                       Note: Periods longer than 48h take very long time!
 
  --reset                            - reset all recorded data
