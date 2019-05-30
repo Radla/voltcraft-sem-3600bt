@@ -109,6 +109,8 @@ set sem(overload)              -1
 set sem(standby)               -1
 set sem(uptime)                -1
 set sem(consumption)           -1
+set sem(header_data)           ""
+set sem(header_measure)        ""
 
 array set data_per_hour              {}
 array set data_per_minute            {}
@@ -118,46 +120,52 @@ set HELP(usage) "Usage: <mac/alias> -<command1> <parameters...> -<command2>\n\
  \                                  <alias>: you can use alias instead of mac address, see ~/.known_sems \n\
  \                                  <command>: For command and parameters"
 set HELP(sync) "\
-  -sync                              - synchronize time"
+  --sync                             - synchronize time"
 
 set HELP(on) "\
-  -on                                - turn on socket"
+  --on                               - turn on socket"
 
 set HELP(off) "\
-  -off                               - turn off socket"
+  --off                              - turn off socket"
 
 set HELP(toggle) "\
-  -toggle                            - toggle socket"
+  --toggle                           - toggle socket"
+
+set HELP(status) "\
+  --status                           - get status incl. voltage, ampere, watts, power factor and frequency"
 
 set HELP(measure) "\
-  -measure                           - take and print measurement incl. voltage, ampere, watts, power factor and frequency"
+  --measure \[<s>\]                    - take measurements, optional duration in seconds (use 0 for single), otherwise forever"
 
-set HELP(watch) "\
-  -watch \[<s>\]                       - watch measurements, optional duration in seconds (use 0 for single), otherwise forever"
+set HELP(header) "\
+  --header <measure|data>            - print header line for measurements or data"
 
 set HELP(uptime) "\
-  -uptime                            - query power-on uptime"
+  --uptime                           - query power-on uptime"
 
 set HELP(consumption) "\
-  -consumption                       - query power-on consumption"
+  --consumption                      - query power-on consumption"
 
 set HELP(total) "\
-  -total                             - query power-on uptime and consumption"
+  --total                            - query power-on uptime and consumption"
 
 set HELP(data) "\
-  -data hour <from:MM-DD|-hh> \[<to:MM-DD|+hh>\]\n\
+  --data hour \[<MM-DD|-d>\] \[<MM-DD|+d>\]\n\
 \                                   - query data on hourly base, max. 90 days in the past\n\
-\                                     from date or hours from now in the past\n\
-\                                     (optional) to date or hours after \"from\"-date\n\
-  -data min <hh:mm|-mm> <hh:mm|+mm>  - query recorded data on minute base, max. 4h in the past\n\
-\                                     from date or hours from now in the past\n\
-\                                     (optional) to date or hours after \"from\"-date"
+\                                     (optiona) from-date or hours from now in the past\n\
+\                                     (optional) to-date or hours after from-date\n\
+\n\
+  --data min \[<hh|-h>\] \[<hh|+h>\]     - query data on minute base, max. 48h in the past\n\
+\                                     (optional) from-hour or hours from now in the past\n\
+\                                     (optional) to-hour or hours after from-hour\n\
+\                                     Note: Periods longer than 48h take very long time!"
 
 set HELP(reset) "\
-  -reset                             - reset all recorded data"
+  --reset                            - reset all recorded data"
+
 
 set HELP(scheduler) "\
-  -scheduler <n> <on|off> <hh:mm|+mm> <on|off> <hh:mm|+mm> \[<smtwtfs>\]\n\
+  --scheduler <n> <on|off> <hh:mm|+mm> <on|off> <hh:mm|+mm> \[<smtwtfs>\]\n\
 \                                     n         - given scheduler where n is 1 - 6\n\
 \                                     on|off    - action of scheduler at start\n\
 \                                     hh:mm|+mm - start time or minutes from now\n\
@@ -167,67 +175,67 @@ set HELP(scheduler) "\
 \                                                 use the word \"sameday\" for same weekdays like today\n\
 \                                                 if weekdays are missing then scheduler runs only once
 \n\
-  -scheduler <n> <set|unset|reset>   - activate, deactivate or reset given scheduler\n\
+  --scheduler <n> <set|unset|reset>  - activate, deactivate or reset given scheduler\n\
 \n\
-  -scheduler <n>                     - query status of given scheduler where n is 1 - 6\n\
+  --scheduler <n>                    - query status of given scheduler where n is 1 - 6\n\
 \n\
-  -scheduler reset                   - resets all schedulers, i.e. 1 - 6\n\
+  --scheduler reset                  - resets all schedulers, i.e. 1 - 6\n\
 \n\
-  -scheduler                         - query status of all schedulers, i.e. 1 - 6"
+  --scheduler                        - query status of all schedulers, i.e. 1 - 6"
 
 set HELP(countdown) "\
-  -countdown <on|off> <hh:mm|+mm>    - set countdown action and runtime\n\
+  --countdown <on|off> <hh:mm|+mm>   - set countdown action and runtime\n\
 \                                     on|off - action of countdown\n\
 \                                     hh:mm  - given ETA\n\
 \                                     +mm    - given runtime in minutes\n\
 \n\
-  -countdown <reset>                 - reset countdown\n\
+  --countdown <reset>                - reset countdown\n\
 \n\
-  -countdown                         - query status of countdown"
+  --countdown                        - query status of countdown"
 
 set HELP(overload) "\
-  -overload <watts> <warn|off> <alarm>\n\
+  --overload <watts> <warn|off> <alarm>\n\
 \                                   - set overload with high-water-mark and actions\n\
 \                                     watts - high-water-mark, max. 3699, e.g. 3699 for 3699W\n\
 \                                     warn  - led blinks when overloaded\n\
 \                                     off   - turn socket off if overloaded\n\
 \                                     alarm - (optional) alarm if overloaded\n\
 \n\
-  -overload off                      - turn overload off\n\
+  --overload off                     - turn overload off\n\
 \n\
-  -overload                          - query overload settings"
+  --overload                         - query overload settings"
 
 set HELP(standby) "\
-  -standby <watts> <warn|off>        - set standby mode if consumption is below water-mark\n\
+  --standby <watts> <warn|off>       - set standby mode if consumption is below water-mark\n\
 \                                     watts - low-water-mark, max. 30.00, e.g. 5.0 for 5.0W\n\
 \                                     warn - led blinks when standby detected\n\
 \                                     off  - auto turn off socket when standby detected\n\
 \n\
-  -standby off                       - turn standby mode off\n\
+  --standby off                      - turn standby mode off\n\
 \n\
-  -standby                           - query standby settings"
+  --standby                          - query standby settings"
 
 
 set HELP(print) "\
-  -print                             - print gathered information"
+  --print                            - print gathered information"
 
 set HELP(dump) "\
-  -dump                              - request all information from device"
+  --dump                             - request all information from device"
 
 set HELP(sleep) "\
-  -sleep <n>                         - pause processing for n seconds"
+  --sleep <n>                        - pause processing for n seconds"
 
 set HELP(verbose) "\
-  -verbose                           - print information about processing"
+  --verbose                          - print information about processing"
 
 set HELP(device) "\
-  -device                            - request device meta data"
+  --device                           - request device meta data"
 
 set HELP(debug) "\
-  -debug                             - print actions in gatttool"
+  --debug                            - print actions in gatttool"
 
 set HELP(help) "\
-  -help \[<command>\]                  - print general help or help for specific command"
+  --help \[<command>\]                 - print general help or help for specific command"
 
 
 
@@ -238,7 +246,7 @@ proc help { argv } {
   global HELP
 
   # print help for given command
-  if { [llength $argv] == 2 && [lindex $argv 0] == "-help" } {
+  if { [llength $argv] == 2 && [lindex $argv 0] == "--help" } {
     set command [lindex $argv 1]
     puts $HELP(usage)
 
@@ -248,35 +256,36 @@ proc help { argv } {
       puts "\nUnknown command <$command>.\n"
     }
     exit 1
-  } elseif { [llength $argv ] < 1 || [ lindex $argv 0 ] == "-help" } {
+  } elseif { [llength $argv ] < 1 || [ lindex $argv 0 ] == "--help" } {
     puts "$HELP(usage)\n"
     puts "\nBasic commands:\n"
     puts "$HELP(on)"
     puts "$HELP(off)"
     puts "$HELP(toggle)"
+    puts "$HELP(status)"
     puts "\nScheduler commands:\n"
     puts "$HELP(scheduler)"
     puts "\nCountdown commands:\n"
     puts "$HELP(countdown)"
     puts "\nPower commands:\n"
-    puts "$HELP(overload)\n"
+    puts "$HELP(overload)"
     puts "$HELP(standby)"
     puts "\nMeasurement commands:\n"
-    puts "$HELP(measure)"
-    puts "$HELP(watch)"
     puts "$HELP(uptime)"
     puts "$HELP(consumption)"
     puts "$HELP(total)\n"
-    puts "$HELP(data)"
-    puts "$HELP(reset)"
+    puts "$HELP(measure)\n"
+    puts "$HELP(data)\n"
+    puts "$HELP(reset)\n"
+    puts "$HELP(header)"
     puts "\nOther commands:\n"
-    puts "$HELP(print)"
+    puts "$HELP(device)"
     puts "$HELP(sync)"
+    puts "$HELP(print)"
     puts "$HELP(dump)"
     puts "$HELP(sleep)"
     puts "$HELP(verbose)"
     puts "$HELP(debug)"
-    puts "$HELP(device)"
     puts "$HELP(help)"
     puts ""
     exit 1
@@ -291,11 +300,8 @@ proc print_sem {} {
 
   global sem
 
-  set out "\n"
-  append out "\tMac:              $sem(mac)\n"
+  set out ""
   append out [ print_device ]
-  append out "\tAlias:            $sem(alias)\n"
-  append out "\n"
   append out [ print_measurement ]
   append out [ print_uptime ]
   append out [ print_consumption ]
@@ -306,8 +312,9 @@ proc print_sem {} {
   append out [ print_countdown ]
   append out [ print_overload ]
   append out [ print_standby ]
+  append out $sem(header_data)
   append out [ print_data_hours ]
-  append out [ print_data_minutes ]  
+  append out [ print_data_minutes ]
   puts $out
 
 }
@@ -632,7 +639,7 @@ proc init { level } {
       exit -1
 
     } else {
-      
+
       # sync and authorize
       set synced [ req_sync ]
 
@@ -1384,7 +1391,7 @@ proc print_measurement {} {
     return ""
   }
 
-  append out "\tMeasurement:\n"
+  append out "\tStatus:\n"
   append out "\t  Power:          [ expr $sem(power) == 1 ? "on" : "off" ]\n"
   append out "\t  Countdown:      [ expr $sem(countdown) == 1 ? "on" : "off" ]\n"
   append out "\t  Voltage:        $sem(latest_voltage) VAC\n"
@@ -1738,8 +1745,7 @@ proc print_uptime {} {
   set time [ calc_time "00:00" [ expr $sem(uptime) % 1440 ] ]
 
   if { $sem(uptime) != -1 } {
-    append out "\tPower-on uptime:  $days days, $time\n"
-    append out "\n"
+    append out "\tUptime:           $days days, $time\n"
   }
 
   return $out
@@ -1809,8 +1815,7 @@ proc print_consumption {} {
   set out ""
 
   if { $sem(consumption) != -1 } {
-    append out "\tPower-on consumption:  [ expr $sem(consumption) / 1000.0 ] kWh\n"
-    append out "\n"
+    append out "\tConsumption:      [ expr $sem(consumption) / 1000.0 ] kWh\n"
   }
 
   return $out
@@ -1829,7 +1834,6 @@ proc print_avg_consumption {} {
   if { $sem(consumption) != -1 && $sem(uptime) != -1 } {
     set _s [ expr round( 10 * $sem(consumption) / ( $sem(uptime) / 60.0 ) ) / 10.0 ]
     append out "\tAvg. consumption: $_s W\n"
-    append out "\n"
   }
 
   return $out
@@ -1897,13 +1901,13 @@ proc parse_data { bytes } {
   global data_per_hour
   global data_per_minute
 
-  set time_in_minutes [ expr [ clock seconds ] / 60 ]
-
   if { [ llength $bytes ] < 3 } {
 
     return 0
 
   }
+
+  set time_in_minutes [ expr [ clock seconds ] / 60 ]
 
   # Byte 1 + 2: Index of first record
   set record [ expr [ lindex $bytes 1 ] + [ lindex $bytes 2 ] * 255 ]
@@ -1943,7 +1947,7 @@ proc print_data_hours {} {
   set out ""
 
   foreach d [ lsort [ array names data_per_hour ] ] {
-    
+
     append out "[ datetime_str [ expr $d * 3600 ] ]\t$data_per_hour($d)\tWh\n"
 
   }
@@ -1962,8 +1966,8 @@ proc print_data_minutes {} {
   set out ""
 
   foreach d [ lsort [ array names data_per_minute ] ] {
-    
-    append out "[ datetime_str [ expr $d * 3600 ] ]\t$data_per_minute($d)\tWh\n"
+
+    append out "[ datetime_str [ expr $d * 60 ] ]\t$data_per_minute($d)\tWh\n"
 
   }
 
@@ -2035,8 +2039,8 @@ proc print_device {} {
   global sem
 
   set out ""
-
   if { ( $sem(initialized) & $INIT(device) ) == $INIT(device) } {
+    append out "\tMac:              $sem(mac)\n"
     append out "\tDevice name:      $sem(device_name)\n"
     append out "\tDevice vendor:    $sem(device_vendor)\n"
     append out "\tDevice serial:    $sem(device_serial)\n"
@@ -2044,6 +2048,8 @@ proc print_device {} {
     append out "\tDevice hardware:  $sem(device_hardware)\n"
     append out "\tDevice software:  $sem(device_software)\n"
     append out "\tDevice secret:    0x[decimal_to_hex $sem(secret) ]\n"
+    append out "\n"
+    append out "\tAlias:            $sem(alias)\n"
     append out "\n"
   }
 
@@ -2088,17 +2094,17 @@ proc do_command { command } {
       req_switch $s
 
     }
-    ^measure$ {
+    ^status$ {
 
       init $INIT(subscribe_measures)
       capture_measurement
 
     }
-    ^watch.*$ {
+    ^measure.*$ {
 
       set until 0
       if { [ llength $command ] > 1 } {
-        check_command $command 1 "watch" {^watch [0-9]+$}
+        check_command $command 1 "measure" {^measure [0-9]+$}
         set until [ expr [ clock seconds ] + [ lindex $command 1 ] ]
       } else {
         set until -1
@@ -2106,12 +2112,19 @@ proc do_command { command } {
 
       init $INIT(subscribe_measures)
 
+      puts $sem(header_measure)
+
       set current_seconds -1
       while { $current_seconds < $until || $until == -1 } {
         capture_measurement
         puts [ print_measurement_as_csv ]
         set current_seconds [ clock seconds ]
       }
+
+    }
+    ^header\ measure$ {
+
+      set sem(header_measure) "Timestamp\tPower\tCountdown\tVolt (V)\tAmpere (A)\tWatt (W)\tFrequency (Hz)\tPower factor"
 
     }
     ^scheduler$ {
@@ -2339,8 +2352,8 @@ proc do_command { command } {
         capture_countdown
       }
     }
-    ^data\ hours\ .+$ {
-      # -data hour <from:MM-DD|hh> \[<to:MM-DD|+hh>\]
+    ^data\ hour\ .+$ {
+      # -data hourly all|today|<days>
 
       # hour in year
       set current_hour_in_year [ hour_in_year [ current_datetime_str ] ]
@@ -2368,13 +2381,13 @@ proc do_command { command } {
       }
 
     }
-    ^data\ mins\ .+$ {
-      # -data min <hh:mm|-mm> <hh:mm|+mm>  - query recorded data on minute base, max. 4h in the past
+    ^data\ min\ .+$ {
+      # -data mins
       # hour in year
       set current_hour_in_year [ hour_in_year [ current_datetime_str ] ]
 
       # request starting hour
-      set request_starting_hour [ expr $current_hour_in_year - 2000 ]
+      set request_starting_hour [ expr $current_hour_in_year - 2 * 24 * 60 ]
 
       init $INIT(subscribe_cmd)
 
@@ -2383,18 +2396,23 @@ proc do_command { command } {
 
       for { set i 0 } { $i <= $chunks } { incr i } {
 
-        set current_size [ array size data_per_hour ]
+        set current_size [ array size data_per_minute ]
 
         req_data 2 [ expr $i * 8 ] [ expr $i == $chunks ? $remains : 8 ]
 
-        if { [ array size data_per_hour ] == $current_size } {
+        if { [ array size data_per_minute ] == $current_size } {
 
           break
 
         }
 
-      }      
-    }    
+      }
+    }
+    ^header\ data$ {
+
+      set sem(header_data) "Timestamp\tWatt\tUnit (Wh)\n"
+
+    }
     ^reset$ {
 
       init 0
@@ -2429,7 +2447,7 @@ proc do_command { command } {
     }
     ^help\ .+$ {
 
-      set h { "-help" }
+      set h { "--help" }
       lappend h [ lindex $command 1 ]
       help $h
 
@@ -2503,8 +2521,8 @@ while { 1 } {
   set param [ lindex $argv 0 ]
   set argv [ lrange $argv 1 end ]
 
-  if { [string range $param 0 0 ] == "-" } {
-    set param [string range $param 1 end ]
+  if { [string range $param 0 1 ] == "--" } {
+    set param [string range $param 2 end ]
     if { [ llength $command ] > 0 } {
       do_command $command
       set command {}
