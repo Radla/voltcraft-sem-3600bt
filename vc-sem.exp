@@ -249,46 +249,46 @@ proc help { argv } {
   # print help for given command
   if { [llength $argv] == 2 && [lindex $argv 0] == "--help" } {
     set command [lindex $argv 1]
-    puts $HELP(usage)
+    puts stderr $HELP(usage)
 
     if { [ info exists HELP($command) ] == 1 } {
-      puts "\n$HELP($command)\n"
+      puts stderr "\n$HELP($command)\n"
     } else {
-      puts "\nUnknown command <$command>.\n"
+      puts stderr "\nUnknown command <$command>.\n"
     }
     exit 1
   } elseif { [llength $argv ] < 1 || [ lindex $argv 0 ] == "--help" } {
-    puts "$HELP(usage)"
-    puts "\nBasic commands:\n"
-    puts "$HELP(on)"
-    puts "$HELP(off)"
-    puts "$HELP(toggle)"
-    puts "$HELP(status)"
-    puts "\nScheduler commands:\n"
-    puts "$HELP(scheduler)"
-    puts "\nCountdown commands:\n"
-    puts "$HELP(countdown)"
-    puts "\nPower commands:\n"
-    puts "$HELP(overload)"
-    puts "$HELP(standby)"
-    puts "\nMeasurement commands:\n"
-    puts "$HELP(uptime)"
-    puts "$HELP(consumption)"
-    puts "$HELP(total)\n"
-    puts "$HELP(measure)\n"
-    puts "$HELP(data)\n"
-    puts "$HELP(reset)\n"
-    puts "$HELP(header)"
-    puts "\nOther commands:\n"
-    puts "$HELP(device)"
-    puts "$HELP(sync)"
-    puts "$HELP(print)"
-    puts "$HELP(dump)"
-    puts "$HELP(sleep)"
-    puts "$HELP(verbose)"
-    puts "$HELP(debug)"
-    puts "$HELP(help)"
-    puts ""
+    puts stderr "$HELP(usage)"
+    puts stderr "\nBasic commands:\n"
+    puts stderr "$HELP(on)"
+    puts stderr "$HELP(off)"
+    puts stderr "$HELP(toggle)"
+    puts stderr "$HELP(status)"
+    puts stderr "\nScheduler commands:\n"
+    puts stderr "$HELP(scheduler)"
+    puts stderr "\nCountdown commands:\n"
+    puts stderr "$HELP(countdown)"
+    puts stderr "\nPower commands:\n"
+    puts stderr "$HELP(overload)"
+    puts stderr "$HELP(standby)"
+    puts stderr "\nMeasurement commands:\n"
+    puts stderr "$HELP(uptime)"
+    puts stderr "$HELP(consumption)"
+    puts stderr "$HELP(total)\n"
+    puts stderr "$HELP(measure)\n"
+    puts stderr "$HELP(data)\n"
+    puts stderr "$HELP(reset)\n"
+    puts stderr "$HELP(header)"
+    puts stderr "\nOther commands:\n"
+    puts stderr "$HELP(device)"
+    puts stderr "$HELP(sync)"
+    puts stderr "$HELP(print)"
+    puts stderr "$HELP(dump)"
+    puts stderr "$HELP(sleep)"
+    puts stderr "$HELP(verbose)"
+    puts stderr "$HELP(debug)"
+    puts stderr "$HELP(help)"
+    puts stderr ""
     exit 1
   }
 
@@ -316,7 +316,7 @@ proc print_sem {} {
   append out $sem(header_data)
   append out [ print_data_hours ]
   append out [ print_data_minutes ]
-  puts $out
+  puts -nonewline $out
 
 }
 
@@ -636,7 +636,7 @@ proc init { level } {
 
     if { $sem(initialized) != $INIT(connect) } {
 
-      puts "ERROR:\tConnection failed"
+      puts stderr "ERROR:\tConnection failed"
       exit -1
 
     } else {
@@ -646,7 +646,7 @@ proc init { level } {
 
       if { ( $synced & $INIT(auth) ) != $INIT(auth) } {
 
-        puts "ERROR:\tAuthorization failed"
+        puts stderr "ERROR:\tAuthorization failed"
         exit -1
 
       } else {
@@ -1949,7 +1949,7 @@ proc print_data_hours {} {
 
   foreach d [ lsort [ array names data_per_hour ] ] {
 
-    append out "[ datetime_str [ expr $d * 3600 ] ]\t$data_per_hour($d)\tWh\n"
+    append out "[ datetime_str [ expr $d * 3600 ] ]\t$data_per_hour($d)\n"
 
   }
 
@@ -1968,7 +1968,7 @@ proc print_data_minutes {} {
 
   foreach d [ lsort [ array names data_per_minute ] ] {
 
-    append out "[ datetime_str [ expr $d * 60 ] ]\t$data_per_minute($d)\tWh\n"
+    append out "[ datetime_str [ expr $d * 60 ] ]\t$data_per_minute($d)\n"
 
   }
 
@@ -2406,12 +2406,12 @@ proc do_command { command } {
       # check period
       if { $to - $now > 0 } {
 
-        puts "End of period must before one hour ago."
+        puts stderr "End of period must before one hour ago."
         exit 1
 
       } elseif { $now - $from > 7689600 } {
 
-        puts "Begin is out of range of 89 days."
+        puts stderr "Begin is out of range of 89 days."
         exit 1
 
       }
@@ -2478,12 +2478,12 @@ proc do_command { command } {
       # check period
       if { $to - $now > 0 } {
 
-        puts "End of period must be one minute before now."
+        puts stderr "End of period must be one minute before now."
         exit 1
 
       } elseif { $now - $from > 172800 } {
 
-        puts "Begin is out of range of 48 hours."
+        puts stderr "Begin is out of range of 48 hours."
         exit 1
 
       }
@@ -2512,7 +2512,7 @@ proc do_command { command } {
     }
     ^header\ data$ {
 
-      set sem(header_data) "Timestamp\tWatt\tUnit (Wh)\n"
+      set sem(header_data) "Timestamp\tWatt (W)\n"
 
     }
     ^reset$ {
@@ -2572,7 +2572,7 @@ proc log { l } {
 
   if { $verbose != 0 } {
 
-    puts $l
+    puts stderr $l
 
   }
 
@@ -2588,9 +2588,9 @@ proc check_command {argv req command reg} {
   set check [ regexp $reg [ concat $argv ] ]
 
   if { [ llength $argv ] <= $req || $check == 0 } {
-    puts $HELP(usage)
-    puts $HELP($command)
-    puts ""
+    puts stderr $HELP(usage)
+    puts stderr $HELP($command)
+    puts stderr ""
     exit 1
   }
 
@@ -2605,7 +2605,7 @@ help $argv
 # 1. get mac
 set sem(mac) [ get_mac [ lindex $argv 0 ] ]
 if { $sem(mac) == "" } {
-  puts "Smart-energy-meter \"[ lindex $argv 0 ]\" currently not known. Edit ~/.known_sems file before using aliases."
+  puts stderr "Smart-energy-meter \"[ lindex $argv 0 ]\" currently not known. Edit ~/.known_sems file before using aliases."
   exit 1
 }
 set argv [ lrange $argv 1 end ]
