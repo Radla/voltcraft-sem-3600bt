@@ -1834,7 +1834,9 @@ proc print_avg_consumption {} {
 
   if { $sem(consumption) != -1 && $sem(uptime) > 0 } {
     set _s [ expr round( 10 * $sem(consumption) / ( $sem(uptime) / 60.0 ) ) / 10.0 ]
+    set _per_year [ expr round( 525600 * $sem(consumption) / 1000.0 / $sem(uptime) ) ]
     append out "\tAvg. consumption: $_s W\n"
+    append out "\tEst. per year:    $_per_year kW/h\n"
   }
 
   return $out
