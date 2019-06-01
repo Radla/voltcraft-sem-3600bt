@@ -1,7 +1,7 @@
 # voltcraft-sem-3600bt
 _"A full-features shell script in order to manage Voltcrafts's bluetooth smart energy meter, switch and scheduler with Linux and Raspberry Pi"_
 
-The Voltcraft SEM-3600BT is a remote 230V switch and smart energy meter. It was sold by Conrad Elektronic in Germany a few years ago. For details take a look at [Amazon's](https://www.amazon.de/Voltcraft-SEM-3600BT-Energiekosten-Messger%C3%A4t-Bluetooth%C2%AE-Schnittstelle-Darstellung/dp/B00IWS7V8G). In other countries it is probably known as "Wittech WiTenergy E100".
+The Voltcraft SEM-3600BT is a remote 230V switch and smart energy meter. It was sold by *Conrad Elektronik* in Germany a few years ago. For details take a look at [Amazon's](https://www.amazon.de/Voltcraft-SEM-3600BT-Energiekosten-Messger%C3%A4t-Bluetooth%C2%AE-Schnittstelle-Darstellung/dp/B00IWS7V8G). In other countries it is probably known as "Wittech WiTenergy E100".
 
 In comparison to many remote switches which use the 433MHz band the SEM-3600BT is based on bluetooth v4.0. The advantage is that there is no need to have additional hardware, e.g. via GPIO connected sender/receiver. 
 
@@ -11,7 +11,7 @@ Voltcraft SEM-3600BT / Wittech WiTenergy E100 has the following features:
 * Configurable overload-mode in order to auto-turn-off or alarm in case of power overload
 * Configurable standby-mode in order to out switch off in case of low consumption
 * Energy meter in order to measure volt, ampere and watts in realtime
-* Energy meter recorder in order to measure power consumpton over long period
+* Energy meter recorder in order to measure power consumption over long period
 
 For official manual by Voltcraft visit [Conrad](http://www.produktinfo.conrad.com/datenblaetter/675000-699999/684997-an-01-ml-VOLTCRAFT_SEM_3600BT_SMART_E_de_en_fr_nl.pdf)
 
@@ -221,7 +221,7 @@ $ ./vc-sem.exp Lamp --toggle
 
 ### Queueing commands / sleep command
 
-Since it takes some time to establish the bluetooth connection each time you start the script, I have introduced command queing. Each commands starts with a dash. In this example I queue 7 commands. The _sleep_ commands pauses processing before the next command starts. 
+Since it takes some time to establish the bluetooth connection each time you start the script, I have introduced command queuing. Each command starts with a dash. In this example I queue 7 commands. The _sleep_ command pauses processing before the next command starts. 
 
 ```
 $ ./vc-sem.exp Lamp --on --sleep 1 --toggle --sleep 1 --toggle --sleep 1 --off
@@ -329,15 +329,15 @@ $ ./vc-sem.exp Lam --scheduler 2 on 07:00 off +20 _MTWTF_ --print
           Weekdays:       _MTWTF_
 ```
 
-Instead of setting the end time of 07:20 a.m. I have used an offset of +20 minutes which is based on the start time. Of course you can also set the time explicitly. 
+Instead of setting the end time of 07:20 a.m. I have used an offset of +20 minutes which is based on the start time. Of course, you can also set the time explicitly. 
 
-You can also use an offset for the start time. For example you can start a scheduler that runs in 5 Minutes from now for one hour _once today_ like this:
+You can also use an offset for the start time. For example, you can start a scheduler that runs in 5 Minutes from now for one hour _once today_ like this:
 
 ```
 $ ./vc-sem.exp Lam --scheduler 3 on +5 off +60
 ```
 
-Let's take a look at the settings of scheduler 3:
+Let's look at the settings of scheduler 3:
 
 ```
 $ ./vc-sem.exp Lam --scheduler 3 --print
@@ -399,7 +399,7 @@ The smart energy meter monitors power consumption continuously. It can perform a
 
 ### Overload mode
 
-You can define an action in case that the smart energy meter exceeds a limit in terms of power consumption. In this example the socket turn off immediately in case that power consumption gets higher that 1000 Watts:
+You can define an action in case that the smart energy meter exceeds a limit in terms of power consumption. In this example the socket turns off immediately in case that power consumption gets higher that 1000 Watts:
 
 ```
 $ ./vc-sem.exp Lam --overload 1000 off --print
@@ -410,7 +410,7 @@ $ ./vc-sem.exp Lam --overload 1000 off --print
           Alarm:          no
 ```
 
-If you also want to hear an acustic alarm then add the _alarm_ parameter:
+If you also want to hear an acoustic alarm, then add the _alarm_ parameter:
 ```
 $ ./vc-sem.exp Lam --overload 1000 off alarm --print
 
@@ -437,7 +437,7 @@ $ ./vc-sem.exp Lam --overload off
 
 ### Standby mode
 
-You can also set an action if the power consumption falls unter a given limit. If you just want to be warned (led blinks), e.g. in case that consumption falls under 3 Watts, enter the following:
+You can also set an action if the power consumption falls under a given limit. If you just want to be warned (led blinks), e.g. in case that consumption falls under 3 Watts, enter the following:
 
 ```
 $ ./vc-sem.exp Lam --standby 3 warn
@@ -457,7 +457,7 @@ $ ./vc-sem.exp Lam --standby off
 
 ### Snapshot
 
-If you want to take and print a single measurement you just have to run the script like this:
+If you want to take and print a single measurement, run the script like this:
 
 ```
 $ ./vc-sem.exp Lamp --status --print
@@ -485,7 +485,7 @@ Timestamp       Power   Countdown       Volt (V)        Ampere (A)      Watt (W)
 2019-05-30 11:33:54     1       0       235.9   0.344   40.28   49.99   0.495
 ```
 
-Note that the _meausure_ command directly prints a csv record. If you have left out the period, here "5" for 5 seconds, it runs forever. You can stop it by pressing CTRL-C
+Note that the *measure* command directly prints a csv record. If you have left out the period, here "5" for 5 seconds, it runs forever. You can stop it by pressing CTRL-C
 
 ## Request recorded data
 
@@ -520,6 +520,69 @@ $ ./vc-sem.exp Ent --total --print
         Avg. consumption: 33.0 W
 ```
 
+### Recorded data
+
+The smart energy meter records power consumption. Data is recorded  in two scopes:
+a. On minute base for the last 48 hours 
+b. On hour base for the last 90 days
+
+In order to request recorded data, use the _data_ command. 
+
+The following command requests recorded data in minute scope of the last 3 hours and prints it with header line.
+```
+$ ./vc-sem.exp Ent --data min -3 +3 --header data --print
+Timestamp       Watt (W)
+2019-06-01 05:07:00     24.3
+2019-06-01 05:08:00     24.3
+2019-06-01 05:09:00     24.2
+...
+2019-06-01 08:06:00     39.4
+```
+
+**Warning:** Periods longer than 3 hours take significantly longer!
+
+Without any parameters the command requests recorded data of the last 60 minutes. 
+```
+ ./vc-sem.exp Ent --data min --header data --print
+Timestamp       Watt (W)
+2019-06-01 07:04:00     25.5
+2019-06-01 07:05:00     25.5
+2019-06-01 07:06:00     25.5
+...
+2019-06-01 08:03:00     54.8
+```
+
+If you want to request data in _hour_ scope for a specific day you can do the following:
+```
+ ./vc-sem.exp Ent --data hour 2019-05-26 --header data --print
+Timestamp       Watt (W)
+2019-05-26 00:00:00     24.9
+2019-05-26 01:00:00     24.1
+2019-05-26 02:00:00     24.3
+...
+2019-05-26 23:00:00     24.0
+```
+
+You can also define a scope by using a specific end data or a *delta* expression like this:
+```
+ $ ./vc-sem.exp Ent --data hour 2019-05-26 +2 --print
+2019-05-26 00:00:00     24.9
+2019-05-26 01:00:00     24.1
+2019-05-26 02:00:00     24.3
+...
+2019-05-27 23:00:00     24.0
+```
+
+If you call the *data* command on hour base without any parameters, the script requests the consumption of the last 24 hours:
+```
+$ ./vc-sem.exp Ent --data hour --print
+2019-05-31 08:00:00     24.5
+2019-05-31 09:00:00     24.0
+2019-05-31 10:00:00     24.0
+...
+2019-06-01 07:00:00     26.2
+```
+
 ### Reset recorded data
 
 If you want to reset all recorded data enter the following:
@@ -531,7 +594,7 @@ $ vc-sem Ent --reset
 
 ### Synchronize time
 
-Actually time is synchronized each time you run a command. If you just want to synchronize the time from your PC with the smart meter call:
+Actually, time is synchronized each time you run a command. If you just want to synchronize the time from your PC with the smart meter call:
 
 ```
 $ ./vc-sem.exp Lamp --sync
@@ -539,7 +602,7 @@ $ ./vc-sem.exp Lamp --sync
 
 ### Device information
 
-In order to get general device information you can request it by using the _device_ command:
+In order to get general device information, you can request it by using the _device_ command:
 ```
 $ ./vc-sem.exp Ent --device --print
         Mac:              D0:39:72:BB:AE:EC
