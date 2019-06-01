@@ -1,13 +1,14 @@
-
-## A. Characteristics
+# API of Voltcraft 3600 BT
 
 ## Initialisation and authorisation  
+
+Before you can push commands to the smart meter it is required to synchronize time and authorize by using a secret key. 
 
 ```
 Write Request Handle 0x018
 
 03 e3 07 05 0a 14 1d 26 53 03
-|  |  |  |  |  |  |  |  |  +  Byte 9: Secret (byte 1)
+|  |  |  |  |  |  |  |  |  +  Byte 9: Secret key (byte 1)
 |  |  |  |  |  |  |  |  + Byte 8: Secret key (byte 2)
 |  |  |  |  |  |  |  + Byte 7: Seconds in hex 
 |  |  |  |  |  |  + Byte 6: Minute in hex
@@ -19,17 +20,23 @@ Write Request Handle 0x018
 + Byte 0: Command, "03" for setting time
 ```
 
+See blog [Voltcraft SEM-3600BT, Who needs security?](https://pushstack.wordpress.com/2018/01/25/voltcraft-sem-3600bt-who-needs-security/) in order to understand how the security code is calculated.
+
 ## Enable / Disable command notifications
+
+The device does not send responses until you subscribe for notifications.
+
 ```
 Write Request Handle 0x019
 
 01 00
-|  + always "00"
-+ 01=Enable, 00=disable
+|  + always "0"
++ 1 = Enable,  0 = disable
 ```
 
 ## Power
 ### Turn power on
+
 ```
 Write Request Handle 0x018
 04 01
@@ -54,41 +61,52 @@ Write Request 0x0018
 ```
 
 ### Interprete scheduler notification
-
 ```
 Notification handle = 0x0018
 value:
 0e 00 00 82 81 02 03 04
-0e id 00 on ah mm hh mm
+0e id 00 dd ah mm hh mm
 |  |  |  |  |  |  |  + End minutes
-|  |  |  |  |  |  + Bit 8: Action (1=turn on, 0=turn off), End hours
+|  |  |  |  |  |  + Bit 8: Action (1 = turn on, 0 = turn off)
+|  |  |  |  |  |    Bit 1 - 7: End hours
 |  |  |  |  |  + Start minutes
-|  |  |  |  + Bit 8: Action (1=turn on, 0=turn off), Start hours
+|  |  |  |  + Bit 8: Action (1 = turn on, 0 = turn off), 
+|  |  |  |    Bit 1 - 7: Start hours
 |  |  |  + Activate: Bit 1: Sun 
-                     Bit 2: Mon 
-                     Bit 3: Tue 
-                     Bit 4: Wed 
-                     Bit 5: Thu
-                     Bit 6: Fri
-                     Bit 7: Sat
-                     Bit 8: Active (1=active, 0=inactive)
+|  |  |              Bit 2: Mon 
+|  |  |              Bit 3: Tue 
+|  |  |              Bit 4: Wed 
+|  |  |              Bit 5: Thu
+|  |  |              Bit 6: Fri
+|  |  |              Bit 7: Sat
+|  |  |              Bit 8: Active (1=active, 0=inactive)
 |  |  + always "00"
 |  + ID of scheduler, 0 - 5
-+ "0c" notification for scheduler
++ "0e" notification for scheduler
 ```
 
 ### Set scheduler
 ```
 Write Request 0x0018
-0c id 00 on ah mm hh mm
+0c 00 00 82 81 02 03 04
+0c id 00 dd ah mm hh mm
 |  |  |  |  |  |  |  + End minutes
-|  |  |  |  |  |  + Action (bit 8) and End hours
+|  |  |  |  |  |  + Bit 8: Action (1 = turn on, 0 = turn off)
+|  |  |  |  |  |    Bit 1 - 7: End hours
 |  |  |  |  |  + Start minutes
-|  |  |  |  + Action (bit 8) and start hours
-|  |  |  + Activate: off = "00", Bits 0 - 7: week mask, Bit 8: Action
+|  |  |  |  + Bit 8: Action (1 = turn on, 0 = turn off), 
+|  |  |  |    Bit 1 - 7: Start hours
+|  |  |  + Activate: Bit 1: Sun 
+|  |  |              Bit 2: Mon 
+|  |  |              Bit 3: Tue 
+|  |  |              Bit 4: Wed 
+|  |  |              Bit 5: Thu
+|  |  |              Bit 6: Fri
+|  |  |              Bit 7: Sat
+|  |  |              Bit 8: Active (1=active, 0=inactive)
 |  |  + always "00"
 |  + ID of scheduler, 0 - 5
-+ "0c" command for scheduler
++ "0c" command for setting scheduler
 ```
 
 ah - action and hours in hex, hours 0 - 23
@@ -104,28 +122,15 @@ Write Request 0x0018
 
 ## Countdown
 
-### Interprete countdown notification
-
-```
-Notification handle = 0x0018
-value: 
-06 93 0b 04
-06 ah mm ss
-
-ah > 128: Turn on action, hh = ah - 128
-ah < 128: Turn off action , hh = ah
-```
-
 ### Set countdown
-
 ```
 Write Request 0x0018
 06 ah mm
-
-ah - action and hours in hex, hours 0 - 23
-     turn on: 128 + hh
-     turn off: hh
-mm - minutes in hex, 0 - 59 
+|  |  + minutes in hex, 0 - 59 
+|  + action and hours in hex, hours 0 - 23
+|    Bit 8: 1 = turn on, 0 = turn off
+|    Bit 1 - 7: Hours
++ "06" for set countdown command
 ```
 
 ## Reset countdown
@@ -135,7 +140,44 @@ Write Request 0x0018
 06 00 00
 ```
 
+### Interprete countdown notification
+
+If countdown is running and you have subscribed for command notifications, you get permanent - probably every second - a notification like this: 
+
+```
+Notification handle = 0x0018
+value: 
+06 ah mm
+|  |  + minutes in hex, 0 - 59 
+|  + action and hours in hex, hours 0 - 23
+|    Bit 8: 1 = turn on, 0 = turn off
+|    Bit 1 - 7: Hours
++ "06" for set countdown command
+
+```
+
 ## Overload
+
+### Set overload
+
+```
+Write Request 0x0018
+15 40 b0 04
+15 aa ww ww
+|  |  |  + Watt (high byte)
+|  |  + Watt (low byte)
+|  + Bit 8: 1 = turn off
+|    Bit 7: 1 = buzzer
++ "15" for overload command
+```
+
+### Reset overload
+
+```
+Write Request 0x0018
+15 00 00 00
+```
+
 
 ### Request overload setting
 
@@ -149,54 +191,16 @@ Write Request Handle 0x018
 ```
 Notification handle = 0x0018
 value:
-16 80 e8 03
+16 40 b0 04
 16 aa ww ww
-        + Watt (high byte)
-      + Watt (low byte)
-   + Status: Active + Power off + Buzzer
+|  |  |  + Watt (high byte)
+|  |  + Watt (low byte)
+|  + Bit 8: 1 = turn off
+|    Bit 7: 1 = buzzer
++ "16" for overload notification
 ```
-
-
-### Set overload
-
-```
-Write Request 0x0018
-15 aa ww ww
-        + Watt (high byte)
-      + Watt (low byte)
-   + Status: Active + Power off + Buzzer
-```
-
-### Reset overload
-
-```
-Write Request 0x0018
-15 00 00 00
-```
-
 
 ## Standby 
-
-### Request standby settings
-
-```
-Write Request 0x0018
-14
-
-Notification handle = 0x0018 value: 14 80 48 0d
-```
-
-### Interprete standby notification
-
-```
-Notification handle = 0x0018 
-value:
-14 80 48 0d
-14 00 00 00
-|  |  |  + low mark, Byte 1 in hex, here 3.4 Watt
-|  |  + Watt low mark, Byte 2 in hex, here 3.4 Watt
-|  + Action, 80 = turn off
-```
 
 ### Set standby
 
@@ -204,9 +208,9 @@ value:
 Write Request 0x0018
 13 aa ww ww
 13 00 00 00
-|  |  |  + low mark, Byte 1 in hex, here 3.4 Watt
-|  |  + Watt low mark, Byte 2 in hex, here 3.4 Watt
-|  + Action, 80 = turn off
+|  |  |  + low mark (high byte), here 3.4 Watt
+|  |  + low mark (low byte), here 3.4 Watt
+|  + Bit 8: 1 = turn off
 ```
 
 ### Reset standby
@@ -216,26 +220,43 @@ Write Request 0x0018
 13 00 00 00
 ```
 
+
+### Request standby settings
+
+```
+Write Request 0x0018
+14
+```
+
+### Interprete standby notification
+
+```
+Notification handle = 0x0018
+value:
+14 40 b0 04
+16 aa ww ww
+|  |  |  + Watt (high byte)
+|  |  + Watt (low byte)
+|  + Bit 8: 1 = turn off
++ "14" for standby notification
+```
+
+
 ## Realtime measurement
 
-## Enable / Disable realtime measurement notifications
+### Enable / Disable realtime measurement notifications
+
+In order to get realtime measurements you must subscribe for notifications.
+
 ```
 Write Request Handle 0x013
 
 01 00
 |  + always "00"
-+ 01=Enable, 00=disable
-```
-
-### Unubscribe from measurements 
-```
-Write Request 0x0013
-0000
++ 1 = Enable,  0 = disable
 ```
 
 ### Interprete realtime measurement notification
-
-Characteristic: 0000fee1-494c-4f47-4943-544543480000
 
 ```
 Notification handle = 0x0012
@@ -263,104 +284,101 @@ w - Watts
 p - Power factor
 f - Frequency
 
-All values are just in decimal
 ```
+**Note** Measured data is just in decimal instead of hex!
 
-## Stored measurements
+## Take snapshot w/o authorization
 
-### Request interval of stored measurement
+```
+gatttool -b D0:39:72:BB:AE:EC --char-read -a 0x15
+Characteristic value/descriptor: 23 62 82 03 67 84 00 04 28 04 92 89 05 00 24 00 00 00 00
+                                 23 52 57 00 00 00 00 00 00 10 00 00 04 99 87 00 00 00 00
+                                 V  V  V  A  A  A  W  W  W  PF PF PF  f ff ff
+```
+see https://wiki.volkszaehler.org/hardware/channels/meters/power/wittech_witenergy_e100
 
-You can't request an interval longer than 8 hours.
 
-89 Days back possible!
+## Recorded measurements on hourly base
+
+### Request stored measurement
 
 ```
 01 00 00 05
-|  |  |  + Offset in hours from Start (range from 1 to 8)
-|  |  | "00" for today
-|  + Begin interval in steps of 8 hours, 0=0h-7h, 8=8h-15h, 16=16-23h
-+ Command, "01" for quering data
-
-Example:
-01 00 00 01
--> queries interval from 00:00 to 01:00
-
-01 00 00 08
--> queries interval from 00:00 to 08:00
-
-01 08 00 01
--> queries interval from 08:00 to 09:00
-
-01 08 00 05
--> queries interval from 08:00 to 13:00
-
-01 08 00 08
--> queries interval from 08:00 to 16:00
-
-01 0F 00 04
--> queries interval from 16:00 to 20:00
-
-01 0F 00 08
--> queries interval from 16:00 to 24:00
+|  |  |  + Amount of records from starting hour to future (range from 1 to 8)
+|  |  | Start of timeframe, byte 2
+|  + Start of timeframe, byte 1, shift hours back from now (0 = latest full hour not current!)
++ Command, "01" for quering data on houry base
+```
 
 
-----
-Query per hour 
+### Interprete stored measerment notification
 
-at 22:05
-
-char-write-req 18 01000007
-                   | | | + Records (hours back)
-                   | +-+ Hours ago
-                   + Command
-
+```
 Notification handle = 0x0018 value: 01 00 00 07 14 00 00 00 00 00 00 00 00 00 20 00 20 00
                                     |  |   | |  7     6     5     4     3     2     1  
-                                    |  |   | |  |     |     |     |     |     |     + R7: 32 Wh, 21:00
-                                    |  |   | |  |     |     |     |     |     + R6: 32 Wh, 20:00
-                                    |  |   | |  |     |     |     |     + R5: 0 Wh, 19:00
-                                    |  |   | |  |     |     |     + R4: 0 Wh, 18:00
-                                    |  |   | |  |     |     + R3: 0 Wh, 17:00
-                                    |  |   | |  |     + R2: 0 Wh, 16:00
-                                    |  |   | |  + R1: 20 Wh, 15:00
-                                    |  |   | + Avail. records (last 7 hours)
-                                    |  +---+ Req. Timeframe (2 bytes)
-                                    + Command 01
+                                    |  |   | |  |     |     |     |     |     |     + R7: 32 Wh
+                                    |  |   | |  |     |     |     |     |     + R6: 32 Wh
+                                    |  |   | |  |     |     |     |     + R5: 0 Wh
+                                    |  |   | |  |     |     |     + R4: 0 Wh
+                                    |  |   | |  |     |     + R3: 0 Wh
+                                    |  |   | |  |     + R2: 0 Wh
+                                    |  |   | |  + R1: 20 Wh
+                                    |  |   | + Avail. records in this notification
+                                    |  +---+ Requested Timeframe (2 bytes)
+                                    + "01" Notification for recorded data on hourly base
+```
 
------
-Query per ??? 
+## Recorded measurements on minute base
 
-at 22:05
-                  0 1 2 3
-char-write-req 18 02000008
-                   | | | + Records (hours back)
-                   | | + 00
-                   | + Minutes ago (up to 240)
-                   + Command
+### Request stored measurement
 
-
-
+```
+02 00 00 05
+|  |  |  + Amount of records from starting minute to future (range from 1 to 8)
+|  |  | Start of timeframe, byte 2
+|  + Start of timeframe, byte 1, shift minutes back from now (0 = latest full minute not current!)
++ Command, "02" for quering data on minute base
 ```
 
 ### Interprete stored measerment notification
 
-_TODO_
-
-### Reset stored data 
-
-Characteristic: 0000fee3-494c-4f47-4943-544543480000
-
 ```
-Write request 0x0018
-19 -> clear power-on time
-17 -> ???? delete stored data
-18 -> request power-on time -> notification
+Notification handle = 0x0018 value: 02 00 00 07 14 00 00 00 00 00 00 00 00 00 20 00 20 00
+                                    |  |   | |  7     6     5     4     3     2     1  
+                                    |  |   | |  |     |     |     |     |     |     + R7: 32 Wh
+                                    |  |   | |  |     |     |     |     |     + R6: 32 Wh
+                                    |  |   | |  |     |     |     |     + R5: 0 Wh
+                                    |  |   | |  |     |     |     + R4: 0 Wh
+                                    |  |   | |  |     |     + R3: 0 Wh
+                                    |  |   | |  |     + R2: 0 Wh
+                                    |  |   | |  + R1: 20 Wh
+                                    |  |   | + Avail. records in this notification
+                                    |  +---+ Requested Timeframe (2 bytes)
+                                    + "02" Notification for recorded data on minute base
+```
+
+### Request power-on time 
+```
+char-write-req 18 18
+
+Notification handle = 0x0018 value: 18 01 00 00
+                                    |  +-----+ 3 bytes of power on time in minutes
+                                    + "18" poewr-on time notification
+```
+
+### Request total consumption 
+```
+char-write-req 18 17
+Notification handle = 0x0018 value: 17 00 00 00 00 00 00 00 00 00 00 00 00 34 15 00 00
+                                                                           +---------+ 4 bytes for consumption in Wh
+```
+
+### Reset recorded data 
+```
+char-write-req 18 19
 ```
 
 ## Device masterdata
-
-### Device Information
-
 
 ```
 char-read-uuid 00002a00-0000-1000-8000-00805f9b34fb
@@ -386,34 +404,4 @@ handle: 0x0026   value: 53 2f 57 3a 20 56 30 31 2e 31 33 00
 char-read-uuid 00002a29-0000-1000-8000-00805f9b34fb
 handle: 0x0028   value: 57 69 74 74 65 63 68 20 43 6f 6d 70 61 6e 79 20 4c 74 64
 => Wittech Company Ltd
-```
-
-```
-gatttool -b D0:39:72:BB:AE:EC --char-read -a 0x15
-Characteristic value/descriptor: 23 62 82 03 67 84 00 04 28 04 92 89 05 00 24 00 00 00 00
-                                 23 52 57 00 00 00 00 00 00 10 00 00 04 99 87 00 00 00 00
-                                 V  V  V  A  A  A  W  W  W  LF LF LF  f ff ff
-```
-see https://wiki.volkszaehler.org/hardware/channels/meters/power/wittech_witenergy_e100
-## ???
-
-```
-char-write-req 18 17
-Notification handle = 0x0018 value: 17 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
-                                    1  2  3  4  5  6  7  8  9  10 11 12 13 14 15 16 17
-```
-
-## Power-on time
-
-
-### Request power-on time 
-```
-char-write-req 18 18
-Notification handle = 0x0018 value: 18 01 00 00
-                                       mm
-```
-
-### Reset power-on time 
-```
-char-write-req 18 19
 ```
