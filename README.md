@@ -245,7 +245,7 @@ In this example there are just basic information available since we haven't real
 If you want to see if the socket is turned on and what the current power consumption is, you must ask for a measurement first and print it afterwards:
 
 ```
-$ ./vc-sem.exp Lam --measure --print
+$ ./vc-sem.exp Lam --status --print
 
         Measurement:
           Power:          on

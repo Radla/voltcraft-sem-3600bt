@@ -1836,7 +1836,7 @@ proc print_avg_consumption {} {
     set _s [ expr round( 10 * $sem(consumption) / ( $sem(uptime) / 60.0 ) ) / 10.0 ]
     set _per_year [ expr round( 525600 * $sem(consumption) / 1000.0 / $sem(uptime) ) ]
     append out "\tAvg. consumption: $_s W/h\n"
-    append out "\tEst. per year:    $_per_year kW/h\n"
+    append out "\tEst. per year:    $_per_year kW/h\n\n"
   }
 
   return $out
