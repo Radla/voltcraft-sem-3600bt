@@ -116,7 +116,7 @@ array set data_per_hour              {}
 array set data_per_minute            {}
 
 set HELP(usage) "Usage: <mac/alias> --<command1> <parameters...> --<command2>\n\
- \                                  <mac>: bluetooth mac address of bulb\n\
+ \                                  <mac>: bluetooth mac address of energy smart meter\n\
  \                                  <alias>: you can use alias instead of mac address, see ~/.known_sems \n\
  \                                  <command>: For command and parameters"
 set HELP(sync) "\
@@ -1836,7 +1836,7 @@ proc print_avg_consumption {} {
     set _s [ expr round( 10 * $sem(consumption) / ( $sem(uptime) / 60.0 ) ) / 10.0 ]
     set _per_year [ expr round( 525600 * $sem(consumption) / 1000.0 / $sem(uptime) ) ]
     append out "\tAvg. consumption: $_s W\n"
-    append out "\tEst. per year:    $_per_year kWh/annum\n\n"
+    append out "\tEst. per year:    $_per_year kWh\n\n"
   }
 
   return $out
