@@ -422,7 +422,13 @@ proc decimal_to_hex { d } {
 
 proc current_datetime {} {
 
-  return [ clock format [ clock seconds ] -format "%Y %m %d %H %M %S" ]
+  set dt {}
+  foreach n [ clock format [ clock seconds ] -format "%Y %m %e %k %M %S" ] {
+
+    lappend  [ scan $n %d ]
+
+  }
+  return $dt
 
 }
 
