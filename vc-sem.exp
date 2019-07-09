@@ -425,7 +425,7 @@ proc current_datetime {} {
   set dt {}
   foreach n [ clock format [ clock seconds ] -format "%Y %m %e %k %M %S" ] {
 
-    lappend  [ scan $n %d ]
+    lappend dt [ scan $n %d ]
 
   }
   return $dt
@@ -1275,6 +1275,8 @@ proc set_countdown { action runtime } {
   set bytes {}
 
   log "INFO:\tSet countdown"
+
+  calc_time
 
   # Byte 1: Countdown command
   lappend bytes $REQ_COMMAND(countdown)
