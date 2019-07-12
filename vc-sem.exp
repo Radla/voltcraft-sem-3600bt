@@ -1276,8 +1276,6 @@ proc set_countdown { action runtime } {
 
   log "INFO:\tSet countdown"
 
-  calc_time
-
   # Byte 1: Countdown command
   lappend bytes $REQ_COMMAND(countdown)
 
