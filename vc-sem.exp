@@ -112,8 +112,8 @@ set sem(consumption)           -1
 set sem(header_data)           ""
 set sem(header_measure)        ""
 
-array set data_per_hour              {}
-array set data_per_minute            {}
+array set data_per_hour        {}
+array set data_per_minute      {}
 
 set HELP(usage) "Usage: <mac/alias> --<command1> <parameters...> --<command2>\n\
  \                                  <mac>: bluetooth mac address of energy smart meter\n\
@@ -2520,7 +2520,7 @@ proc do_command { command } {
     }
     ^header\ data$ {
 
-      set sem(header_data) "Timestamp\tWatt (W)\n"
+      set sem(header_data) "Timestamp\tWatt (Wh)\n"
 
     }
     ^reset$ {

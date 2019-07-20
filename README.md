@@ -232,28 +232,32 @@ $ ./vc-sem.exp Lamp --on --sleep 1 --toggle --sleep 1 --toggle --sleep 1 --off
 In most cases the script won't print anything. If you want to print some output, e.g. information that has been gathered by previous commands, you must tell the script to do so explicitly. 
 
 ```
-$ ./vc-sem.exp Lam --print
-
-        Mac:              20:CD:39:1F:EC:DE
-        Alias:            Lamp
+$ vc-sem Lam --status --print
+        Status:
+          Power:          off
+          Countdown:      off
+          Voltage:        239.3 VAC
+          Ampere:         0.0 A
+          Watts:          0.0 W
+          Frequency:      49.99 Hz
+          Power factor:   1.0
 ```
 
-In this example there are just basic information available since we haven't really requested anything. 
+In this example we have already made use of the status command.
 
 ### See power state of the socket
 
-If you want to see if the socket is turned on and what the current power consumption is, you must ask for a measurement first and print it afterwards:
+If you want to see if the socket is turned on and what the current power consumption is, you must ask for status first and print it afterwards:
 
 ```
-$ ./vc-sem.exp Lam --status --print
-
-        Measurement:
-          Power:          on
+$ vc-sem Lam --status --print
+        Status:
+          Power:          off
           Countdown:      off
-          Voltage:        236.3 V
+          Voltage:        239.4 VAC
           Ampere:         0.0 A
           Watts:          0.0 W
-          Frequency:      49.98 Hz
+          Frequency:      50.01 Hz
           Power factor:   1.0
 ```
 
