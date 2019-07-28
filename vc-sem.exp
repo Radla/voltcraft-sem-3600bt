@@ -220,6 +220,9 @@ set HELP(standby) "\
 set HELP(print) "\
   --print                            - print gathered information"
 
+set HELP(json) "\
+  --json                             - print some gathered information in JSON format"
+
 set HELP(dump) "\
   --dump                             - request all information from device"
 
@@ -283,6 +286,7 @@ proc help { argv } {
     puts stderr "$HELP(device)"
     puts stderr "$HELP(sync)"
     puts stderr "$HELP(print)"
+    puts stderr "$HELP(json)"
     puts stderr "$HELP(dump)"
     puts stderr "$HELP(sleep)"
     puts stderr "$HELP(verbose)"
@@ -317,6 +321,22 @@ proc print_sem {} {
   append out [ print_data_hours ]
   append out [ print_data_minutes ]
   puts -nonewline $out
+
+}
+
+
+
+
+proc json_sem {} {
+
+  global sem
+
+  set out "{\n"
+  append out "[ json_device ],\n"
+  append out "[ json_measurement ]\n"
+
+  append out "}"
+  puts $out
 
 }
 
@@ -1415,6 +1435,30 @@ proc print_measurement {} {
 
 
 
+proc json_measurement {} {
+
+  global sem
+
+  if { [ info exists sem(latest_voltage) ] == 0 } {
+    return "  \"status\" : null"
+  }
+
+  append out "  \"status\" : {\n"
+  append out "    \"power\" : $sem(power),\n"
+  append out "    \"voltage\" : $sem(latest_voltage),\n"
+  append out "    \"ampere\" : $sem(latest_ampere),\n"
+  append out "    \"watts\" : $sem(latest_watts),\n"
+  append out "    \"frequency\" : $sem(latest_frequency),\n"
+  append out "    \"factor\" : $sem(latest_factor)\n"
+  append out "  }"
+
+  return $out
+
+}
+
+
+
+
 proc print_measurement_as_csv {} {
 
   global sem
@@ -2069,6 +2113,39 @@ proc print_device {} {
 
 
 
+proc json_device {} {
+
+  global INIT
+  global sem
+
+  set out ""
+  if { ( $sem(initialized) & $INIT(device) ) == $INIT(device) } {
+
+    append out "  \"device\" : {\n"
+    append out "    \"mac\" : \"$sem(mac)\",\n"
+    append out "    \"name\" : \"$sem(device_name)\",\n"
+    append out "    \"vendor\" : \"$sem(device_vendor)\",\n"
+    append out "    \"serial\" : \"$sem(device_serial)\",\n"
+    append out "    \"firmware\" : \"$sem(device_firmware)\",\n"
+    append out "    \"hardware\" : \"$sem(device_hardware)\",\n"
+    append out "    \"software\" : \"$sem(device_software)\",\n"
+    append out "    \"secret\" : \"0x[decimal_to_hex $sem(secret) ]\",\n"
+    append out "    \"alias\" : \"$sem(alias)\"\n"
+    append out "  }"
+
+  } else {
+
+    append out "  \"device\" : null"    
+
+  }
+
+  return $out
+
+}
+
+
+
+
 proc do_command { command } {
 
   global INIT
@@ -2537,6 +2614,11 @@ proc do_command { command } {
     ^print$ {
 
       print_sem
+
+    }
+    ^json$ {
+
+      json_sem
 
     }
     ^sleep.*$ {
