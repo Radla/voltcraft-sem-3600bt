@@ -688,3 +688,39 @@ The _dump_ command tries to gather all information from the device.
 ```
 $ ./vc-sem.exp La --dump --print
 ```
+
+
+## Integration to Home Assistant for others.
+
+[salvq](https://github.com/salvq) added this information how to integrate
+this script in [Home Assistant](https://www.home-assistant.io/)
+
+Change XX to your device MAC address.
+
+**Reading consumption, watts**
+
+sensors.yaml
+```
+- platform: command_line
+    name: voltcraft_watts
+    json_attributes:
+      - status
+    command: "/home/homeassistant/.homeassistant/custom_components/voltcraft-sem-3600bt/vc-sem.exp XX:XX:XX:XX:XX:XX --status --json"
+    unit_of_measurement: "W"
+    value_template: >
+      {{ value_json['status']['watts'] }}
+```
+**Script setup to turn the device off**
+
+configuration.yaml
+```
+shell_command:
+  script_voltcraft_turn_off: expect /home/homeassistant/.homeassistant/custom_components/voltcraft-sem-3600bt/vc-sem.exp XX:XX:XX:XX:XX:XX --off
+```
+scripts.yaml
+```
+  turn_off_action_voltcraft_script:
+    alias: Voltcraft Turn OFF
+    sequence:
+        service: shell_command.script_voltcraft_turn_off
+```
