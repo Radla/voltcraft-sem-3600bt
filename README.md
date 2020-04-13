@@ -178,6 +178,7 @@ Other commands:
  --device                           - request device meta data
  --sync                             - synchronize time
  --print                            - print gathered information
+ --json                             - print some gathered information in JSON format 
  --dump                             - request all information from device
  --sleep <n>                        - pause processing for n seconds
  --verbose                          - print information about processing

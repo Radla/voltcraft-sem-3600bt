@@ -333,7 +333,14 @@ proc json_sem {} {
 
   set out "{\n"
   append out "[ json_device ],\n"
-  append out "[ json_measurement ]\n"
+  append out "[ json_measurement ],\n"
+  append out "[ json_consumption ],\n"
+  append out "[ json_scheduler ],\n"
+  append out "[ json_countdown ],\n"
+  append out "[ json_overload ],\n"
+  append out "[ json_standby ],\n"
+  append out "[ json_data_hours ],\n"
+  append out "[ json_data_minutes ]\n"
 
   append out "}"
   puts $out
@@ -1459,6 +1466,207 @@ proc json_measurement {} {
 
 
 
+proc json_consumption {} {
+
+  global sem
+
+  if { $sem(consumption) < 0 || $sem(uptime) < 0 } {
+    return "  \"consumption\" : null"
+  }
+
+  set _s [ expr round( 10 * $sem(consumption) / ( $sem(uptime) / 60.0 ) ) / 10.0 ]
+  set _per_year [ expr round( 525600 * $sem(consumption) / 1000.0 / $sem(uptime) ) ]
+
+  append out "  \"consumption\" : \{\n"
+  append out "    \"uptime\" : $sem(uptime),\n"
+  append out "    \"consumption\" : $sem(consumption),\n"
+  append out "    \"avg\" : $_s,\n"
+  append out "    \"est\" : $_per_year\n"
+  append out "  \}"
+
+  return $out
+
+}
+
+
+
+
+proc json_scheduler {} {
+
+  global sem
+
+  append out "  \"schedulers\" : \[\n"
+
+  for { set i 0 } { $i < 6 } { incr i } {
+
+    if { [ info exists sem("scheduler_stop_$i") ] == 0 } {
+      continue
+    }
+
+    append out "    \{\n"
+    append out "       \"id\" : [ expr $i + 1 ],\n"
+    append out "       \"active\": $sem("scheduler_active_$i"),\n"
+    append out "       \"start_time\" : \"$sem("scheduler_start_$i")\",\n"
+    append out "       \"start_action\" : $sem("scheduler_start_action_$i"),\n"
+    append out "       \"stop_time\" : \"$sem("scheduler_stop_$i")\",\n"
+    append out "       \"stop_action\" : $sem("scheduler_stop_action_$i"),\n"
+    append out "       \"weekdays\" : \"$sem("scheduler_daymask_$i")\"\n"
+
+    if { $i == 5 } {
+      append out "    \}\n"
+    } else {
+      append out "    \},\n"
+    }
+
+  }
+
+  append out "  \]"
+
+  return $out
+
+}
+
+
+
+
+proc json_countdown {} {
+
+  global sem
+
+  if { [ info exists sem(countdown_action) ] > 0 } {
+    append out "  \"countdown\" : \{\n"
+    append out "    \"active\" : 1,\n"
+    append out "    \"action\" : $sem(countdown_action),\n"
+    append out "    \"remaining\" : \"$sem(countdown_runtime)\",\n"
+    append out "    \"eta\" : \"[ calc_time [ current_time_str ] [ time_in_minutes $sem(countdown_runtime) ] ]\"\n"
+    append out "  \}"
+  } else {
+    append out "  \"countdown\" : \{\n"
+    append out "    \"active\" : 0\n"
+    append out "  \}"
+  }
+
+  return $out
+
+}
+
+
+
+
+proc json_overload {} {
+
+  global sem
+
+  if { $sem(overload) != -1 } {
+    append out "  \"overload\" : \{\n"
+    append out "    \"threshold\" : $sem(overload),\n"
+    if { $sem(overload_turnoff) == 1 } {
+      append out "    \"action\" : \"off\",\n"
+    } else {
+      append out "    \"action\" : \"LED\",\n"
+    }
+
+    append out "    \"alarm\" : $sem(overload_alarm)\n"
+    append out "  \}"
+  } else {
+    append out "  \"overload\" : null"
+  }
+
+  return $out
+
+}
+
+
+
+proc json_standby {} {
+
+  global sem
+
+  if { $sem(standby) != -1 } {
+    append out "  \"standby\" : \{\n"
+    append out "    \"threshold\" : $sem(standby),\n"
+    if { $sem(standby_active) == 1 } {
+      append out "    \"action\" : \"off\"\n"
+    } else {
+      append out "    \"action\" : \"LED\"\n"
+    }
+    append out "  \}"
+  } else {
+    append out "  \"standby\" : null"
+  }
+
+  return $out
+
+}
+
+
+
+proc json_data_hours {} {
+
+  global data_per_hour
+
+  set out "  \"data_per_hour\" : \[\n"
+
+  set size [ array size data_per_hour ]
+  set i 0
+
+  foreach d [ lsort [ array names data_per_hour ] ] {
+
+    incr i
+
+    append out "    \{\n"
+    append out "      \"timestamp\" : \"[ datetime_str [ expr $d * 3600 ] ]\",\n"
+    append out "      \"consumption\" : $data_per_hour($d)\n"
+
+    if { $i == $size } {
+      append out "    \}"
+    } else {
+      append out "    \},\n"
+    }
+  }
+
+  append out "  \]"
+
+  return $out
+
+}
+
+
+
+
+proc json_data_minutes {} {
+
+  global data_per_minute
+
+  set out "  \"data_per_minute\" : \[\n"
+
+  set size [ array size data_per_minute ]
+  set i 0
+
+  foreach d [ lsort [ array names data_per_minute ] ] {
+
+    incr i
+
+    append out "    \{\n"
+    append out "      \"timestamp\" : \"[ datetime_str [ expr $d * 60 ] ]\",\n"
+    append out "      \"consumption\" : $data_per_minute($d)\n"
+
+    if { $i == $size } {
+      append out "    \}"
+    } else {
+      append out "    \},\n"
+    }
+  }
+
+  append out "  \]"
+
+  return $out
+
+}
+
+
+
+
 proc print_measurement_as_csv {} {
 
   global sem
@@ -2135,7 +2343,7 @@ proc json_device {} {
 
   } else {
 
-    append out "  \"device\" : null"    
+    append out "  \"device\" : null"
 
   }
 
